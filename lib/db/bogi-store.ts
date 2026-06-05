@@ -251,6 +251,39 @@ export function mapStoredSummary(scope: SummaryScope, row: Record<string, unknow
   };
 }
 
+export type StoredSummaryInput = {
+  userId: string;
+  scope: SummaryScope;
+  date: string;
+  summary: string;
+  stats: Record<string, unknown>;
+};
+
+export function mapSummaryUpsert(input: StoredSummaryInput) {
+  const { table, dateColumn } = getSummaryTable(input.scope);
+  return {
+    table,
+    value: {
+      user_id: input.userId,
+      [dateColumn]: input.date,
+      summary: input.summary,
+      stats_json: input.stats
+    },
+    conflict: `user_id,${dateColumn}`
+  };
+}
+
+export async function upsertStoredSummary(client: BogiStoreClient, input: StoredSummaryInput) {
+  const mapped = mapSummaryUpsert(input);
+  const result = await client
+    .from(mapped.table)
+    .upsert(mapped.value, { onConflict: mapped.conflict })
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
 export async function getStoredSummary(
   client: BogiStoreClient,
   input: { userId: string; scope: SummaryScope; date: string }
