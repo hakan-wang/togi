@@ -264,3 +264,39 @@ export async function getStoredSummary(
   if (result.error) throw new Error(result.error.message);
   return mapStoredSummary(input.scope, result.data ?? {});
 }
+
+export type UserPatternInput = {
+  patternKey: string;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+};
+
+export function mapPatternUpsert(userId: string, pattern: UserPatternInput) {
+  return {
+    user_id: userId,
+    pattern_key: pattern.patternKey,
+    evidence_json: pattern.evidence,
+    recommendation: pattern.recommendation
+  };
+}
+
+export async function upsertUserPattern(client: BogiStoreClient, userId: string, pattern: UserPatternInput) {
+  const result = await client
+    .from("user_patterns")
+    .upsert(mapPatternUpsert(userId, pattern), { onConflict: "user_id,pattern_key" })
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
+export async function getRelevantPatterns(client: BogiStoreClient, userId: string, category: string) {
+  const result = await client
+    .from("user_patterns")
+    .select("pattern_key, evidence_json, recommendation, updated_at")
+    .eq("user_id", userId)
+    .ilike("pattern_key", `${category}%`)
+    .order("updated_at", { ascending: false });
+  if (result.error) throw new Error(result.error.message);
+  return result.data ?? [];
+}
