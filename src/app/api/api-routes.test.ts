@@ -30,6 +30,13 @@ const authedGetRequest = () =>
     }
   });
 
+const authedGetUrl = (url: string) =>
+  new Request(url, {
+    headers: {
+      authorization: "Bearer route-user"
+    }
+  });
+
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe("api route handlers", () => {
@@ -132,7 +139,9 @@ describe("api route handlers", () => {
   it("supports patterns and google calendar boundary endpoints", async () => {
     await expect((await listPatterns(authedGetRequest())).json()).resolves.toEqual(expect.any(Array));
     await expect((await calendarConnect(authedGetRequest())).json()).resolves.toMatchObject({ provider: "google" });
-    await expect((await calendarCallback(authedGetRequest())).json()).resolves.toMatchObject({ status: "callback_received" });
+    await expect((await calendarCallback(authedGetUrl("http://localhost/api/calendar/google/callback?code=test-code"))).json()).resolves.toMatchObject({
+      status: "callback_received"
+    });
     await expect((await calendarSync(authedJsonRequest({}))).json()).resolves.toEqual({ synced: 0 });
   });
 });
