@@ -9,6 +9,7 @@ import type { UserPattern } from "@/server/schemas/patterns";
 import type { CreatePlannedBlockInput, PlannedBlock, UpdatePlannedBlockInput } from "@/server/schemas/planned-blocks";
 import type { CreateRealityLogInput, RealityLog, UpdateRealityLogInput } from "@/server/schemas/reality-logs";
 import { assertCheckablePlannedBlock } from "@/server/services/planned-blocks/planned-blocks.service";
+import { assertConfirmedRealityLog } from "@/server/services/reality-logs/reality-logs.service";
 import type { TogiStore } from "./store";
 
 type EnvLike = Record<string, string | undefined>;
@@ -170,6 +171,7 @@ export const createSupabaseServices = (client: SupabaseClient) => {
       return mapRealityLogRow(requireSingle(data, error, "reality log"));
     },
     async create(userId: string, input: CreateRealityLogInput): Promise<RealityLog> {
+      assertConfirmedRealityLog(input);
       await plannedBlocks.get(userId, input.plannedBlockId);
       const { data, error } = await client
         .from("reality_logs")
@@ -188,16 +190,18 @@ export const createSupabaseServices = (client: SupabaseClient) => {
       return mapRealityLogRow(requireSingle(data, error, "reality log"));
     },
     async update(userId: string, id: string, input: UpdateRealityLogInput): Promise<RealityLog> {
+      const existing = await this.get(userId, id);
+      assertConfirmedRealityLog({ confirmedByUser: input.confirmedByUser ?? existing.confirmedByUser });
       const { data, error } = await client
         .from("reality_logs")
-        .update({
+        .update(cleanRow({
           actual_summary: input.actualSummary,
           completion_score: input.completionScore,
           deviation_reason: input.deviationReason,
           actual_categories_json: input.actualCategories,
           confirmed_by_user: input.confirmedByUser,
           source: input.source
-        })
+        }))
         .eq("id", id)
         .eq("user_id", userId)
         .select("*")

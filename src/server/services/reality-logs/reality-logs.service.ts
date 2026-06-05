@@ -1,8 +1,14 @@
 import { createId } from "@/server/lib/ids";
-import { notFound } from "@/server/lib/errors";
+import { badRequest, notFound } from "@/server/lib/errors";
 import { nowIso } from "@/server/lib/time";
 import type { TogiStore } from "@/server/db/store";
 import type { CreateRealityLogInput, RealityLog, UpdateRealityLogInput } from "@/server/schemas/reality-logs";
+
+export const assertConfirmedRealityLog = (input: Pick<CreateRealityLogInput, "confirmedByUser">) => {
+  if (!input.confirmedByUser) {
+    throw badRequest("reality log must be confirmed by user before persistence");
+  }
+};
 
 export const createRealityLogService = (store: TogiStore) => ({
   async list(userId: string): Promise<RealityLog[]> {
@@ -16,6 +22,7 @@ export const createRealityLogService = (store: TogiStore) => ({
   },
 
   async create(userId: string, input: CreateRealityLogInput): Promise<RealityLog> {
+    assertConfirmedRealityLog(input);
     const block = store.plannedBlocks.find((item) => item.id === input.plannedBlockId && item.userId === userId);
     if (!block) throw notFound("planned block");
 
@@ -39,6 +46,7 @@ export const createRealityLogService = (store: TogiStore) => ({
 
   async update(userId: string, id: string, input: UpdateRealityLogInput): Promise<RealityLog> {
     const log = await this.get(userId, id);
+    assertConfirmedRealityLog({ confirmedByUser: input.confirmedByUser ?? log.confirmedByUser });
     Object.assign(log, input, { updatedAt: nowIso() });
     return log;
   }

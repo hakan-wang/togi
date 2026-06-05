@@ -58,4 +58,31 @@ describe("reality log service", () => {
       })
     ).rejects.toThrow("not found");
   });
+
+  it("rejects unconfirmed reality logs because persisted reality is user-confirmed truth", async () => {
+    const store = createMemoryStore();
+    const plannedBlocks = createPlannedBlockService(store);
+    const realityLogs = createRealityLogService(store);
+    const block = await plannedBlocks.create("user-1", {
+      title: "Draft launch notes",
+      startTime: "2026-06-05T09:00:00.000Z",
+      endTime: "2026-06-05T10:00:00.000Z",
+      intentionText: "Draft launch notes for review",
+      successCriteria: ["Write 5 bullet summary"],
+      category: "work",
+      createdBy: "user"
+    });
+
+    await expect(
+      realityLogs.create("user-1", {
+        plannedBlockId: block.id,
+        actualSummary: "AI guessed this happened.",
+        completionScore: 0.5,
+        deviationReason: "Unconfirmed.",
+        actualCategories: ["writing"],
+        confirmedByUser: false,
+        source: "reality_log_agent"
+      })
+    ).rejects.toThrow("confirmed");
+  });
 });
