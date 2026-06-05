@@ -9,25 +9,29 @@ import { createGoalService } from "@/server/services/goals/goals.service";
 import { createPatternService } from "@/server/services/patterns/patterns.service";
 import { createPlannedBlockService } from "@/server/services/planned-blocks/planned-blocks.service";
 import { createRealityLogService } from "@/server/services/reality-logs/reality-logs.service";
+import type { TogiStore } from "@/server/db/store";
 
-const agentRuns = createAgentRunService(memoryStore);
-
-const memoryServices = {
-  store: memoryStore,
-  goals: createGoalService(memoryStore),
-  plannedBlocks: createPlannedBlockService(memoryStore),
-  realityLogs: createRealityLogService(memoryStore),
-  patterns: createPatternService(memoryStore),
-  agentRuns,
-  plannerAgent: createPlannerAgentService(agentRuns),
-  realityLogAgent: createRealityLogAgentService(agentRuns),
-  coachAgent: createCoachAgentService(
-    {
-      listRealityLogs: async (userId) => memoryStore.realityLogs.filter((log) => log.userId === userId)
-    },
-    agentRuns
-  )
+export const createMemoryServices = (store: TogiStore) => {
+  const agentRuns = createAgentRunService(store);
+  return {
+    store,
+    goals: createGoalService(store),
+    plannedBlocks: createPlannedBlockService(store),
+    realityLogs: createRealityLogService(store),
+    patterns: createPatternService(store),
+    agentRuns,
+    plannerAgent: createPlannerAgentService(agentRuns),
+    realityLogAgent: createRealityLogAgentService(agentRuns),
+    coachAgent: createCoachAgentService(
+      {
+        listRealityLogs: async (userId) => store.realityLogs.filter((log) => log.userId === userId)
+      },
+      agentRuns
+    )
+  };
 };
+
+const memoryServices = createMemoryServices(memoryStore);
 
 export const createServices = () => {
   const client = createServerSupabaseClient();
