@@ -43,10 +43,11 @@ create table if not exists public.reality_logs (
   completion_score numeric not null check (completion_score >= 0 and completion_score <= 1),
   deviation_reason text not null default '',
   actual_categories_json jsonb not null default '[]'::jsonb,
-  confirmed_by_user boolean not null default false,
+  confirmed_by_user boolean not null default true,
   source text not null check (source in ('user', 'reality_log_agent')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  check (confirmed_by_user = true)
 );
 
 create table if not exists public.calendar_connections (

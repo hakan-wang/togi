@@ -72,17 +72,16 @@ describe("reality log service", () => {
       category: "work",
       createdBy: "user"
     });
+    const unconfirmedInput = {
+      plannedBlockId: block.id,
+      actualSummary: "AI guessed this happened.",
+      completionScore: 0.5,
+      deviationReason: "Unconfirmed.",
+      actualCategories: ["writing"],
+      confirmedByUser: false,
+      source: "reality_log_agent"
+    };
 
-    await expect(
-      realityLogs.create("user-1", {
-        plannedBlockId: block.id,
-        actualSummary: "AI guessed this happened.",
-        completionScore: 0.5,
-        deviationReason: "Unconfirmed.",
-        actualCategories: ["writing"],
-        confirmedByUser: false,
-        source: "reality_log_agent"
-      })
-    ).rejects.toThrow("confirmed");
+    await expect(realityLogs.create("user-1", unconfirmedInput as never)).rejects.toThrow("confirmed");
   });
 });

@@ -11,7 +11,7 @@ export const realityLogSchema = z.object({
   completionScore: z.number().min(0).max(1),
   deviationReason: z.string(),
   actualCategories: z.array(nonEmptyString),
-  confirmedByUser: z.boolean(),
+  confirmedByUser: z.literal(true),
   source: realityLogSourceSchema,
   createdAt: z.string(),
   updatedAt: z.string()
@@ -23,7 +23,7 @@ export const createRealityLogSchema = z.object({
   completionScore: z.number().min(0).max(1),
   deviationReason: z.string().default(""),
   actualCategories: z.array(nonEmptyString).default([]),
-  confirmedByUser: z.boolean(),
+  confirmedByUser: z.literal(true),
   source: realityLogSourceSchema.default("user")
 });
 
