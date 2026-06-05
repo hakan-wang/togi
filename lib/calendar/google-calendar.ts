@@ -8,6 +8,23 @@ type CalendarLike = {
     insert(input: { calendarId: string; requestBody: ReturnType<typeof toGoogleCalendarEvent> }): Promise<{ data: { id?: string | null } }>;
   };
 };
+type OAuthClientLike = {
+  generateAuthUrl(input: {
+    access_type: "offline";
+    prompt: "consent";
+    scope: string[];
+    state: string;
+  }): string;
+};
+type OAuthTokenClientLike = {
+  getToken(code: string): Promise<{
+    tokens: {
+      access_token?: string | null;
+      refresh_token?: string | null;
+      expiry_date?: number | null;
+    };
+  }>;
+};
 
 export function toGoogleCalendarEvent(block: PlannedBlockInput) {
   return {
@@ -28,6 +45,24 @@ export function createGoogleOAuthClient() {
 
 export function createGoogleCalendarClient() {
   return google.calendar({ version: "v3", auth: createGoogleOAuthClient() });
+}
+
+export function buildGoogleCalendarAuthUrl(client: OAuthClientLike, userId: string) {
+  return client.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: ["https://www.googleapis.com/auth/calendar.events"],
+    state: userId
+  });
+}
+
+export async function exchangeGoogleOAuthCode(client: OAuthTokenClientLike, code: string) {
+  const { tokens } = await client.getToken(code);
+  return {
+    accessToken: tokens.access_token ?? "",
+    refreshToken: tokens.refresh_token ?? "",
+    expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null
+  };
 }
 
 export async function insertGoogleCalendarEvent(calendar: CalendarLike, block: PlannedBlockInput) {
