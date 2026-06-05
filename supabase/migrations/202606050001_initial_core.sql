@@ -103,3 +103,18 @@ create policy "reality_logs owner access" on public.reality_logs for all using (
 create policy "calendar_connections owner access" on public.calendar_connections for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "agent_runs owner access" on public.agent_runs for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "user_patterns owner access" on public.user_patterns for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create or replace function public.set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger set_users_updated_at before update on public.users for each row execute function public.set_updated_at();
+create trigger set_goals_updated_at before update on public.goals for each row execute function public.set_updated_at();
+create trigger set_planned_blocks_updated_at before update on public.planned_blocks for each row execute function public.set_updated_at();
+create trigger set_reality_logs_updated_at before update on public.reality_logs for each row execute function public.set_updated_at();
+create trigger set_calendar_connections_updated_at before update on public.calendar_connections for each row execute function public.set_updated_at();
+create trigger set_user_patterns_updated_at before update on public.user_patterns for each row execute function public.set_updated_at();

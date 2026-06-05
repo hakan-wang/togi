@@ -23,4 +23,13 @@ describe("supabase migrations", () => {
 
     expect(migration).toContain("provider text not null default 'google' check (provider = 'google')");
   });
+
+  it("keeps updated_at current on core mutable tables", () => {
+    const migration = readInitialMigration();
+
+    expect(migration).toContain("create or replace function public.set_updated_at()");
+    for (const table of ["users", "goals", "planned_blocks", "reality_logs", "calendar_connections", "user_patterns"]) {
+      expect(migration).toContain(`create trigger set_${table}_updated_at`);
+    }
+  });
 });
