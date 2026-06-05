@@ -1,5 +1,7 @@
 import type { AgentRunService } from "./agent-runs.service";
 import type { RealityLogAgentInput, RealityLogAgentOutput } from "@/server/schemas/agents";
+import { realityLogAgentOutputSchema } from "@/server/schemas/agents";
+import { runStructuredAgent, shouldUseOpenAiAgents } from "./agent-runtime";
 
 const defaultModel = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
 
@@ -18,6 +20,17 @@ const scoreAnswer = (answer: string, criteria: string[]) => {
 export const createRealityLogAgentService = (runs: AgentRunService) => ({
   async draft(userId: string, input: RealityLogAgentInput): Promise<RealityLogAgentOutput> {
     return runs.record(userId, "reality_log", input, defaultModel, async () => {
+      if (shouldUseOpenAiAgents()) {
+        return runStructuredAgent({
+          name: "Reality Log Agent",
+          model: defaultModel,
+          outputType: realityLogAgentOutputSchema,
+          input,
+          instructions:
+            "Turn planned block plus user answer into a structured reality log draft. Score against success criteria, not generic productivity. User confirmation is final truth, so return confirmedByUser false."
+        });
+      }
+
       const completionScore = scoreAnswer(input.userAnswer, input.plannedBlock.successCriteria);
       const needsClarification = input.userAnswer.trim().length < 12;
 
