@@ -1,4 +1,6 @@
 import { memoryStore } from "@/server/db/memory-store";
+import { createServerSupabaseClient } from "@/server/db/supabase";
+import { createSupabaseServices, shouldUseSupabaseStore } from "@/server/db/supabase-store";
 import { createAgentRunService } from "@/server/services/agents/agent-runs.service";
 import { createCoachAgentService } from "@/server/services/agents/coach-agent.service";
 import { createPlannerAgentService } from "@/server/services/agents/planner-agent.service";
@@ -10,7 +12,7 @@ import { createRealityLogService } from "@/server/services/reality-logs/reality-
 
 const agentRuns = createAgentRunService(memoryStore);
 
-export const services = {
+const memoryServices = {
   store: memoryStore,
   goals: createGoalService(memoryStore),
   plannedBlocks: createPlannedBlockService(memoryStore),
@@ -19,5 +21,20 @@ export const services = {
   agentRuns,
   plannerAgent: createPlannerAgentService(agentRuns),
   realityLogAgent: createRealityLogAgentService(agentRuns),
-  coachAgent: createCoachAgentService(memoryStore, agentRuns)
+  coachAgent: createCoachAgentService(
+    {
+      listRealityLogs: async (userId) => memoryStore.realityLogs.filter((log) => log.userId === userId)
+    },
+    agentRuns
+  )
 };
+
+export const createServices = () => {
+  const client = createServerSupabaseClient();
+  if (client && shouldUseSupabaseStore(process.env)) {
+    return createSupabaseServices(client);
+  }
+  return memoryServices;
+};
+
+export const services = createServices();

@@ -6,7 +6,7 @@ import type { CreatePlannedBlockInput, PlannedBlock, UpdatePlannedBlockInput } f
 
 const vaguePhrases = new Set(["be productive", "work", "focus", "catch up", "do stuff"]);
 
-const assertCheckable = (input: Pick<CreatePlannedBlockInput, "title" | "intentionText" | "successCriteria">) => {
+export const assertCheckablePlannedBlock = (input: Pick<CreatePlannedBlockInput, "title" | "intentionText" | "successCriteria">) => {
   const intention = input.intentionText.trim().toLowerCase();
   const title = input.title.trim().toLowerCase();
   if (vaguePhrases.has(intention) || vaguePhrases.has(title) || input.successCriteria.length === 0) {
@@ -26,7 +26,7 @@ export const createPlannedBlockService = (store: TogiStore) => ({
   },
 
   async create(userId: string, input: CreatePlannedBlockInput): Promise<PlannedBlock> {
-    assertCheckable(input);
+    assertCheckablePlannedBlock(input);
     const timestamp = nowIso();
     const block: PlannedBlock = {
       id: createId(),
@@ -50,7 +50,7 @@ export const createPlannedBlockService = (store: TogiStore) => ({
   async update(userId: string, id: string, input: UpdatePlannedBlockInput): Promise<PlannedBlock> {
     const block = await this.get(userId, id);
     const merged = { ...block, ...input };
-    assertCheckable({
+    assertCheckablePlannedBlock({
       title: merged.title,
       intentionText: merged.intentionText,
       successCriteria: merged.successCriteria
