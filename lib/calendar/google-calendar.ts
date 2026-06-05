@@ -3,6 +3,11 @@ import type { z } from "zod";
 import type { plannedBlockSchema } from "@/lib/zod/contracts";
 
 type PlannedBlockInput = z.infer<typeof plannedBlockSchema>;
+type CalendarLike = {
+  events: {
+    insert(input: { calendarId: string; requestBody: ReturnType<typeof toGoogleCalendarEvent> }): Promise<{ data: { id?: string | null } }>;
+  };
+};
 
 export function toGoogleCalendarEvent(block: PlannedBlockInput) {
   return {
@@ -19,4 +24,16 @@ export function createGoogleOAuthClient() {
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
+}
+
+export function createGoogleCalendarClient() {
+  return google.calendar({ version: "v3", auth: createGoogleOAuthClient() });
+}
+
+export async function insertGoogleCalendarEvent(calendar: CalendarLike, block: PlannedBlockInput) {
+  const response = await calendar.events.insert({
+    calendarId: "primary",
+    requestBody: toGoogleCalendarEvent(block)
+  });
+  return response.data.id ?? null;
 }

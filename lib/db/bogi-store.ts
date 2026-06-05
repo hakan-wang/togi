@@ -89,6 +89,21 @@ export async function savePlannedBlocks(client: BogiStoreClient, userId: string,
   return saved;
 }
 
+export async function savePlannedBlock(
+  client: BogiStoreClient,
+  userId: string,
+  block: PlannedBlock,
+  calendarEventId: string | null = null
+) {
+  const result = await client
+    .from("planned_blocks")
+    .insert(mapPlannedBlockInsert(userId, block, calendarEventId))
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
 export async function saveRealityLog(client: BogiStoreClient, userId: string, log: RealityLogInput) {
   const result = await client
     .from("reality_logs")
@@ -118,6 +133,27 @@ export function mapCalendarConnectionInsert(userId: string, input: {
   if (input.resourceId !== undefined) insert.resource_id = input.resourceId;
   if (input.expiresAt !== undefined) insert.expires_at = input.expiresAt;
   return insert;
+}
+
+export async function saveCalendarConnection(
+  client: BogiStoreClient,
+  userId: string,
+  input: {
+    accessToken: string;
+    refreshToken: string;
+    syncToken?: string | null;
+    channelId?: string | null;
+    resourceId?: string | null;
+    expiresAt?: string | null;
+  }
+) {
+  const result = await client
+    .from("calendar_connections")
+    .insert(mapCalendarConnectionInsert(userId, input))
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
 }
 
 export function mapScreenFrameBatchInsert(input: {

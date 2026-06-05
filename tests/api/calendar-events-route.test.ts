@@ -20,7 +20,9 @@ describe("calendar events route", () => {
         description: "Success criteria: Rough cut first 3 minutes\nCategory: work/video",
         start: { dateTime: "2026-06-06T13:00:00.000Z" },
         end: { dateTime: "2026-06-06T14:00:00.000Z" }
-      }
+      },
+      googleCalendarEventId: null,
+      savedBlock: null
     });
   });
 });
