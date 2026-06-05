@@ -43,16 +43,23 @@ describe("bogi store", () => {
     const data = await exportUserData(client, "usr_1");
 
     expect(Object.keys(data)).toEqual([
+      "goals",
       "plannedBlocks",
+      "screenSessions",
+      "screenFrameBatches",
       "realityLogs",
       "screenObservationSummaries",
       "dailySummaries",
       "weeklySummaries",
       "monthlySummaries",
-      "userPatterns"
+      "userPatterns",
+      "calendarConnections",
+      "agentRuns"
     ]);
+    expect(client.calls).toContainEqual({ table: "goals", op: "eq", column: "user_id", value: "usr_1" });
     expect(client.calls).toContainEqual({ table: "planned_blocks", op: "eq", column: "user_id", value: "usr_1" });
     expect(client.calls).toContainEqual({ table: "reality_logs", op: "eq", column: "user_id", value: "usr_1" });
+    expect(client.calls).toContainEqual({ table: "agent_runs", op: "eq", column: "user_id", value: "usr_1" });
   });
 
   it("deletes the user row so cascades remove owned data", async () => {

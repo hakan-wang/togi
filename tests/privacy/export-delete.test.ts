@@ -8,13 +8,18 @@ vi.mock("@/lib/db/server", () => ({
 
 vi.mock("@/lib/db/bogi-store", () => ({
   exportUserData: vi.fn(async () => ({
+    goals: [],
     plannedBlocks: [],
+    screenSessions: [],
+    screenFrameBatches: [],
     realityLogs: [],
     screenObservationSummaries: [],
     dailySummaries: [],
     weeklySummaries: [],
     monthlySummaries: [],
-    userPatterns: []
+    userPatterns: [],
+    calendarConnections: [],
+    agentRuns: []
   })),
   deleteUserData: vi.fn(async () => undefined)
 }));
@@ -25,7 +30,8 @@ describe("privacy export/delete", () => {
     expect(await response.json()).toMatchObject({
       plannedBlocks: [],
       realityLogs: [],
-      screenObservationSummaries: []
+      screenObservationSummaries: [],
+      agentRuns: []
     });
   });
 

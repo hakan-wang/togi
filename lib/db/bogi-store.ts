@@ -7,26 +7,36 @@ export type BogiStoreClient = {
 };
 
 export type ExportedUserData = {
+  goals: unknown[];
   plannedBlocks: unknown[];
+  screenSessions: unknown[];
+  screenFrameBatches: unknown[];
   realityLogs: unknown[];
   screenObservationSummaries: unknown[];
   dailySummaries: unknown[];
   weeklySummaries: unknown[];
   monthlySummaries: unknown[];
   userPatterns: unknown[];
+  calendarConnections: unknown[];
+  agentRuns: unknown[];
 };
 
 export type SummaryScope = "day" | "week" | "month";
 export type AgentRunStatus = "started" | "succeeded" | "failed";
 
 const exportTables: Array<[keyof ExportedUserData, string]> = [
+  ["goals", "goals"],
   ["plannedBlocks", "planned_blocks"],
+  ["screenSessions", "screen_sessions"],
+  ["screenFrameBatches", "screen_frame_batches"],
   ["realityLogs", "reality_logs"],
   ["screenObservationSummaries", "screen_observation_summaries"],
   ["dailySummaries", "daily_summaries"],
   ["weeklySummaries", "weekly_summaries"],
   ["monthlySummaries", "monthly_summaries"],
-  ["userPatterns", "user_patterns"]
+  ["userPatterns", "user_patterns"],
+  ["calendarConnections", "calendar_connections"],
+  ["agentRuns", "agent_runs"]
 ];
 
 async function readUserRows(client: BogiStoreClient, table: string, userId: string) {
