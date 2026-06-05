@@ -17,4 +17,10 @@ describe("supabase migrations", () => {
     expect(migration).toContain("check (jsonb_array_length(success_criteria) > 0)");
     expect(migration).toContain("check (lower(trim(intention_text)) not in ('be productive', 'work', 'focus', 'catch up', 'do stuff'))");
   });
+
+  it("limits calendar connections to Google for Phase 1", () => {
+    const migration = readInitialMigration();
+
+    expect(migration).toContain("provider text not null default 'google' check (provider = 'google')");
+  });
 });
