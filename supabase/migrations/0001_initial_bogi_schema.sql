@@ -51,6 +51,18 @@ create table public.screen_observation_summaries (
   created_at timestamptz not null default now()
 );
 
+create table public.screen_frame_batches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  planned_block_id uuid references public.planned_blocks(id) on delete set null,
+  screen_session_id uuid references public.screen_sessions(id) on delete set null,
+  frame_hash text not null,
+  captured_at timestamptz not null,
+  raw_frame_stored_until timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, frame_hash)
+);
+
 create table public.reality_logs (
   id uuid primary key default gen_random_uuid(),
   planned_block_id uuid references public.planned_blocks(id) on delete set null,
