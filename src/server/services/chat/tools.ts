@@ -82,9 +82,9 @@ export const createTogiChatTools = (ctx: TogiToolContext) => {
 
   const listPlannedBlocks = recorded({
     name: "list_planned_blocks",
-    description: "List the user's planned time blocks, optionally filtered by status (planned, completed, or cancelled). Call this to see what is already scheduled before planning.",
+    description: "List the user's planned time blocks, optionally filtered by status (planned, completed, or cancelled). Call this to see what is already scheduled before planning. Omit the status filter when looking up a block to check in on — those are usually still 'planned'.",
     schema: z.object({
-      status: z.enum(["planned", "completed", "cancelled"]).optional().describe("Optional status filter")
+      status: z.enum(["planned", "completed", "cancelled"]).optional().describe("Optional status filter; omit to return all blocks")
     }),
     run: async ({ status }) => {
       const blocks = await services.plannedBlocks.list(userId);
@@ -123,7 +123,7 @@ export const createTogiChatTools = (ctx: TogiToolContext) => {
   const draftRealityLog = recorded({
     name: "draft_reality_log",
     description:
-      "Draft a reality log for a planned block from the user's free-text answer about what actually happened. This produces a DRAFT only — it is never persisted as truth. The user must explicitly confirm before it becomes a reality log.",
+      "Draft a reality log for a planned block from the user's free-text answer about what actually happened. Call this immediately whenever the user describes how a planned block actually went (a check-in), after using list_planned_blocks to find the block id. This produces a DRAFT only — it is never persisted as truth. The user must explicitly confirm before it becomes a reality log.",
     schema: z.object({
       plannedBlockId: z.string().min(1).describe("The id of the planned block being reviewed"),
       userAnswer: z.string().min(1).describe("The user's free-text description of what actually happened")
