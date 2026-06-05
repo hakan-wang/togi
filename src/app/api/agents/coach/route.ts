@@ -7,10 +7,14 @@ export const dynamic = "force-dynamic";
 const coachInputSchema = z.object({
   question: z.string().trim().min(1)
 });
+const coachOutputSchema = z.object({
+  answer: z.string(),
+  evidence: z.array(z.object({ id: z.string(), completionScore: z.number().min(0).max(1) }))
+});
 
 export async function POST(request: Request) {
   return withUser(request, async (userId) => {
     const input = await parseJson(request, coachInputSchema);
     return services.coachAgent.coach(userId, input.question);
-  });
+  }, coachOutputSchema);
 }
