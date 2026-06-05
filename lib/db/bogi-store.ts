@@ -1,4 +1,4 @@
-import type { PlannerOutput, RealityLogInput } from "@/lib/zod/contracts";
+import type { PlannerOutput, RealityLogInput, ScreenObservationOutput } from "@/lib/zod/contracts";
 
 export type BogiStoreClient = {
   // Supabase's generated client type is deeply generic; this store only needs
@@ -188,6 +188,49 @@ export async function saveScreenFrameBatch(
     .from("screen_frame_batches")
     .insert(mapScreenFrameBatchInsert(input))
     .select("id")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
+export function mapScreenObservationSummaryInsert(input: {
+  plannedBlockId: string;
+  screenSessionId: string;
+  timeWindowStart: string;
+  timeWindowEnd: string;
+  observation: ScreenObservationOutput;
+  rawFramesStoredUntil?: string | null;
+}) {
+  const confidences = input.observation.observedActivities.map((activity) => activity.confidence);
+  const confidence = confidences.length
+    ? Math.round((confidences.reduce((sum, value) => sum + value, 0) / confidences.length) * 100) / 100
+    : 0;
+
+  return {
+    planned_block_id: input.plannedBlockId,
+    screen_session_id: input.screenSessionId,
+    time_window_start: input.timeWindowStart,
+    time_window_end: input.timeWindowEnd,
+    observed_activities_json: input.observation.observedActivities,
+    confidence,
+    raw_frames_stored_until: input.rawFramesStoredUntil ?? null
+  };
+}
+
+export async function saveScreenObservationSummary(
+  client: BogiStoreClient,
+  input: {
+    plannedBlockId: string;
+    screenSessionId: string;
+    timeWindowStart: string;
+    timeWindowEnd: string;
+    observation: ScreenObservationOutput;
+  }
+) {
+  const result = await client
+    .from("screen_observation_summaries")
+    .insert(mapScreenObservationSummaryInsert(input))
+    .select("*")
     .single();
   if (result.error) throw new Error(result.error.message);
   return result.data;
