@@ -21,7 +21,8 @@ describe("coach route", () => {
 
     expect(await response.json()).toEqual({
       message: "Your 3-hour editing blocks are failing. Use 60-minute blocks.",
-      proposedCalendarChanges: []
+      proposedCalendarChanges: [],
+      agentRun: null
     });
   });
 });

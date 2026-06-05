@@ -17,6 +17,7 @@ export type ExportedUserData = {
 };
 
 export type SummaryScope = "day" | "week" | "month";
+export type AgentRunStatus = "started" | "succeeded" | "failed";
 
 const exportTables: Array<[keyof ExportedUserData, string]> = [
   ["plannedBlocks", "planned_blocks"],
@@ -299,4 +300,32 @@ export async function getRelevantPatterns(client: BogiStoreClient, userId: strin
     .order("updated_at", { ascending: false });
   if (result.error) throw new Error(result.error.message);
   return result.data ?? [];
+}
+
+export type AgentRunInput = {
+  userId: string | null;
+  agentName: string;
+  input: unknown;
+  output: unknown;
+  status: AgentRunStatus;
+};
+
+export function mapAgentRunInsert(run: AgentRunInput) {
+  return {
+    user_id: run.userId,
+    agent_name: run.agentName,
+    input_json: run.input,
+    output_json: run.output,
+    status: run.status
+  };
+}
+
+export async function saveAgentRun(client: BogiStoreClient, run: AgentRunInput) {
+  const result = await client
+    .from("agent_runs")
+    .insert(mapAgentRunInsert(run))
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
 }
