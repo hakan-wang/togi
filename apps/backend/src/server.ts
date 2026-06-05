@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { registerSyncRoutes } from "./routes/sync.js";
 
 export function buildServer() {
   const server = Fastify({ logger: true });
@@ -6,6 +7,8 @@ export function buildServer() {
   server.get("/health", async () => {
     return { ok: true };
   });
+
+  void server.register(registerSyncRoutes);
 
   return server;
 }
