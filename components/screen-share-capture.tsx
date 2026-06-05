@@ -2,12 +2,14 @@
 
 import { useRef, useState } from "react";
 import { Monitor, Square } from "lucide-react";
+import { addFrameToBatch, createFrameBatchFormData, type FrameBatchState } from "@/lib/screen/frame-batch";
 import { targetCanvasSize } from "@/lib/screen/frame-sampler";
 import { hashBlob } from "@/lib/screen/image-hash";
 
-export function ScreenShareCapture({ plannedBlockId }: { plannedBlockId: string }) {
+export function ScreenShareCapture({ plannedBlockId, userId, screenSessionId }: { plannedBlockId: string; userId?: string; screenSessionId?: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const batchRef = useRef<FrameBatchState>({ seenHashes: new Set(), frames: [] });
   const [status, setStatus] = useState("idle");
 
   async function start() {
@@ -22,6 +24,7 @@ export function ScreenShareCapture({ plannedBlockId }: { plannedBlockId: string 
 
   function stop() {
     if (timerRef.current) window.clearInterval(timerRef.current);
+    void flushBatch();
     const stream = videoRef.current?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((track) => track.stop());
     setStatus("stopped");
@@ -40,11 +43,26 @@ export function ScreenShareCapture({ plannedBlockId }: { plannedBlockId: string 
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.5));
     if (!blob) return;
     const hash = await hashBlob(blob);
-    const form = new FormData();
-    form.append("plannedBlockId", plannedBlockId);
-    form.append("capturedAt", new Date().toISOString());
-    form.append("hash", hash);
-    form.append("frame", blob);
+    const capturedAt = new Date().toISOString();
+    const imageBase64 = await blobToBase64(blob);
+    const result = addFrameToBatch(batchRef.current, { capturedAt, hash, imageBase64 }, 3);
+    batchRef.current = result.state;
+    if (!result.ready) return;
+    await flushBatch();
+  }
+
+  async function flushBatch() {
+    const frames = batchRef.current.frames;
+    if (frames.length === 0) return;
+    const form = createFrameBatchFormData({
+      userId,
+      plannedBlockId,
+      screenSessionId,
+      timeWindowStart: frames[0]?.capturedAt ?? new Date().toISOString(),
+      timeWindowEnd: frames.at(-1)?.capturedAt ?? new Date().toISOString(),
+      frames
+    });
+    batchRef.current = { ...batchRef.current, frames: [] };
     await fetch("/api/screen/batch", { method: "POST", body: form });
   }
 
@@ -62,4 +80,14 @@ export function ScreenShareCapture({ plannedBlockId }: { plannedBlockId: string 
       <p className="mt-2 text-sm text-steel">{status}</p>
     </section>
   );
+}
+
+async function blobToBase64(blob: Blob) {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
 }
