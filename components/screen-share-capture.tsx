@@ -10,23 +10,60 @@ export function ScreenShareCapture({ plannedBlockId, userId, screenSessionId }: 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const batchRef = useRef<FrameBatchState>({ seenHashes: new Set(), frames: [] });
+  const sessionIdRef = useRef<string | undefined>(screenSessionId);
   const [status, setStatus] = useState("idle");
 
   async function start() {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
+    setStatus("starting");
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      if (userId && !sessionIdRef.current) {
+        const response = await fetch("/api/screen/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            plannedBlockId,
+            captureSurface: "browser",
+            rawFramesEnabled: false
+          })
+        });
+        if (!response.ok) throw new Error("screen session start failed");
+        const data = await response.json();
+        const sessionId = String(data.screenSession?.id ?? "");
+        if (!sessionId) throw new Error("screen session id missing");
+        sessionIdRef.current = sessionId;
+      }
+      setStatus("sharing");
+      timerRef.current = window.setInterval(sampleFrame, 15000);
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+      setStatus("failed");
     }
-    setStatus("sharing");
-    timerRef.current = window.setInterval(sampleFrame, 15000);
   }
 
-  function stop() {
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    void flushBatch();
+  async function stop() {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    await flushBatch();
     const stream = videoRef.current?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((track) => track.stop());
+    const sessionId = sessionIdRef.current;
+    sessionIdRef.current = undefined;
+    if (sessionId) {
+      void fetch("/api/screen/session", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screenSessionId: sessionId, endedAt: new Date().toISOString() })
+      });
+    }
     setStatus("stopped");
   }
 
@@ -57,7 +94,7 @@ export function ScreenShareCapture({ plannedBlockId, userId, screenSessionId }: 
     const form = createFrameBatchFormData({
       userId,
       plannedBlockId,
-      screenSessionId,
+      screenSessionId: sessionIdRef.current,
       timeWindowStart: frames[0]?.capturedAt ?? new Date().toISOString(),
       timeWindowEnd: frames.at(-1)?.capturedAt ?? new Date().toISOString(),
       frames

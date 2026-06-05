@@ -185,6 +185,43 @@ export function mapScreenFrameBatchInsert(input: {
   };
 }
 
+export type ScreenSessionStartInput = {
+  userId: string;
+  plannedBlockId: string;
+  captureSurface: string;
+  rawFramesEnabled: boolean;
+};
+
+export function mapScreenSessionInsert(input: ScreenSessionStartInput) {
+  return {
+    user_id: input.userId,
+    planned_block_id: input.plannedBlockId,
+    capture_surface: input.captureSurface,
+    raw_frames_enabled: input.rawFramesEnabled
+  };
+}
+
+export async function startScreenSession(client: BogiStoreClient, input: ScreenSessionStartInput) {
+  const result = await client
+    .from("screen_sessions")
+    .insert(mapScreenSessionInsert(input))
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
+export async function endScreenSession(client: BogiStoreClient, screenSessionId: string, endedAt: string) {
+  const result = await client
+    .from("screen_sessions")
+    .update({ ended_at: endedAt })
+    .eq("id", screenSessionId)
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
 export async function saveScreenFrameBatch(
   client: BogiStoreClient,
   input: {
