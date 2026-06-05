@@ -12,7 +12,11 @@ vi.mock("@/lib/db/server", () => ({
 
 vi.mock("@/lib/db/bogi-store", async () => {
   const actual = await vi.importActual<typeof import("@/lib/db/bogi-store")>("@/lib/db/bogi-store");
-  return { ...actual, saveRealityLog: mocks.saveRealityLog, saveAgentRun: mocks.saveAgentRun };
+  return {
+    ...actual,
+    saveRealityLog: mocks.saveRealityLog,
+    saveAgentRun: mocks.saveAgentRun
+  };
 });
 
 vi.mock("@/lib/agents/reality-log-agent", () => ({
@@ -26,8 +30,8 @@ vi.mock("@/lib/agents/reality-log-agent", () => ({
   }))
 }));
 
-describe("reality log route store integration", () => {
-  it("persists user-confirmed reality logs when user id is provided", async () => {
+describe("reality log route agent run logging", () => {
+  it("records successful reality log agent runs when user id is provided", async () => {
     const response = await POST(new Request("http://127.0.0.1/api/reality-log", {
       method: "POST",
       body: JSON.stringify({
@@ -39,14 +43,18 @@ describe("reality log route store integration", () => {
       })
     }));
 
-    expect(mocks.saveRealityLog).toHaveBeenCalledWith({ db: true }, "usr_1", expect.objectContaining({
-      plannedBlockId: "blk_1",
-      confirmedByUser: true
-    }));
-    expect(await response.json()).toMatchObject({
-      plannedBlockId: "blk_1",
-      savedRealityLog: { id: "log_1" },
-      agentRun: { id: "run_reality" }
+    expect(mocks.saveAgentRun).toHaveBeenCalledWith({ db: true }, {
+      userId: "usr_1",
+      agentName: "reality_log_agent",
+      input: {
+        plannedBlockId: "blk_1",
+        plannedTitle: "Edit video",
+        observationSummary: "Mostly editing.",
+        userCorrection: "Tutorial was needed."
+      },
+      output: expect.objectContaining({ confirmedByUser: true }),
+      status: "succeeded"
     });
+    expect(await response.json()).toMatchObject({ agentRun: { id: "run_reality" } });
   });
 });

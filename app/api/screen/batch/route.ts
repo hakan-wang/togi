@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runScreenObserverAgent } from "@/lib/agents/screen-observer-agent";
-import { saveScreenFrameBatch, saveScreenObservationSummary } from "@/lib/db/bogi-store";
+import { saveAgentRun, saveScreenFrameBatch, saveScreenObservationSummary } from "@/lib/db/bogi-store";
 import { createServerSupabaseClient } from "@/lib/db/server";
 import { frameBatchReadyEvent } from "@/lib/workflows/frame-batch-ready";
 
@@ -39,10 +39,12 @@ export async function POST(request: Request) {
 
   let observationSummary = null;
   let savedObservationSummary = null;
+  let agentRun = null;
   if (batchReady && screenSessionId) {
     const framesJson = String(form.get("framesJson") ?? "[]");
     const frames = JSON.parse(framesJson) as Array<{ capturedAt: string; imageBase64: string }>;
-    observationSummary = await runScreenObserverAgent({ blockId: plannedBlockId, frames });
+    const observerInput = { blockId: plannedBlockId, frames };
+    observationSummary = await runScreenObserverAgent(observerInput);
     if (client) {
       savedObservationSummary = await saveScreenObservationSummary(client, {
         plannedBlockId,
@@ -50,6 +52,13 @@ export async function POST(request: Request) {
         timeWindowStart,
         timeWindowEnd,
         observation: observationSummary
+      });
+      agentRun = await saveAgentRun(client, {
+        userId,
+        agentName: "screen_observer_agent",
+        input: observerInput,
+        output: observationSummary,
+        status: "succeeded"
       });
     }
   }
@@ -60,6 +69,7 @@ export async function POST(request: Request) {
     capturedAt,
     workflowEvent: frameBatchReadyEvent,
     observationSummary,
-    savedObservationSummary
+    savedObservationSummary,
+    agentRun
   });
 }

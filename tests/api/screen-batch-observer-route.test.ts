@@ -9,7 +9,8 @@ const mocks = vi.hoisted(() => ({
     summary: "Mostly editing."
   })),
   saveScreenFrameBatch: vi.fn(async () => ({ id: "frame_batch_1" })),
-  saveScreenObservationSummary: vi.fn(async () => ({ id: "obs_1" }))
+  saveScreenObservationSummary: vi.fn(async () => ({ id: "obs_1" })),
+  saveAgentRun: vi.fn(async () => ({ id: "run_screen" }))
 }));
 
 vi.mock("@/lib/agents/screen-observer-agent", () => ({
@@ -25,7 +26,8 @@ vi.mock("@/lib/db/bogi-store", async () => {
   return {
     ...actual,
     saveScreenFrameBatch: mocks.saveScreenFrameBatch,
-    saveScreenObservationSummary: mocks.saveScreenObservationSummary
+    saveScreenObservationSummary: mocks.saveScreenObservationSummary,
+    saveAgentRun: mocks.saveAgentRun
   };
 });
 
@@ -60,7 +62,8 @@ describe("screen batch observer route", () => {
     });
     expect(await response.json()).toMatchObject({
       observationSummary: { summary: "Mostly editing." },
-      savedObservationSummary: { id: "obs_1" }
+      savedObservationSummary: { id: "obs_1" },
+      agentRun: { id: "run_screen" }
     });
   });
 });
