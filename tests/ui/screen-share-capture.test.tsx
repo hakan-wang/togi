@@ -4,9 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScreenShareCapture } from "@/components/screen-share-capture";
 
 function mockMediaStream() {
+  const stop = vi.fn();
   return {
-    getTracks: () => [{ stop: vi.fn() }]
-  } as unknown as MediaStream;
+    stop,
+    stream: {
+      getTracks: () => [{ stop }]
+    } as unknown as MediaStream
+  };
 }
 
 describe("ScreenShareCapture", () => {
@@ -23,7 +27,7 @@ describe("ScreenShareCapture", () => {
   });
 
   it("starts a persisted screen session after media permission succeeds", async () => {
-    getDisplayMedia.mockResolvedValue(mockMediaStream());
+    getDisplayMedia.mockResolvedValue(mockMediaStream().stream);
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ screenSession: { id: "ses_1" } })
@@ -55,5 +59,20 @@ describe("ScreenShareCapture", () => {
 
     expect(await screen.findByText("failed")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps sharing when session persistence fails", async () => {
+    const media = mockMediaStream();
+    getDisplayMedia.mockResolvedValue(media.stream);
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false,
+      json: async () => ({ error: "missing supabase env" })
+    })));
+
+    render(createElement(ScreenShareCapture, { plannedBlockId: "blk_1", userId: "usr_1" }));
+    fireEvent.click(screen.getByRole("button", { name: /share screen/i }));
+
+    expect(await screen.findByText("sharing")).toBeInTheDocument();
+    expect(media.stop).not.toHaveBeenCalled();
   });
 });

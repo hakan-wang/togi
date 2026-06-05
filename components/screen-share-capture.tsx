@@ -22,7 +22,14 @@ export function ScreenShareCapture({ plannedBlockId, userId, screenSessionId }: 
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      if (userId && !sessionIdRef.current) {
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop());
+      setStatus("failed");
+      return;
+    }
+
+    if (userId && !sessionIdRef.current) {
+      try {
         const response = await fetch("/api/screen/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -38,13 +45,12 @@ export function ScreenShareCapture({ plannedBlockId, userId, screenSessionId }: 
         const sessionId = String(data.screenSession?.id ?? "");
         if (!sessionId) throw new Error("screen session id missing");
         sessionIdRef.current = sessionId;
+      } catch {
+        sessionIdRef.current = undefined;
       }
-      setStatus("sharing");
-      timerRef.current = window.setInterval(sampleFrame, 15000);
-    } catch {
-      stream?.getTracks().forEach((track) => track.stop());
-      setStatus("failed");
     }
+    setStatus("sharing");
+    timerRef.current = window.setInterval(sampleFrame, 15000);
   }
 
   async function stop() {
