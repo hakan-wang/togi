@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "@/server/db/memory-store";
+import { plannerAgentInputSchema } from "@/server/schemas/agents";
 import { createAgentRunService } from "./agent-runs.service";
 import { createPlannerAgentService } from "./planner-agent.service";
 import { createRealityLogAgentService } from "./reality-log-agent.service";
 
 describe("agent services", () => {
+  it("planner input requires at least one available calendar slot", () => {
+    expect(() =>
+      plannerAgentInputSchema.parse({
+        request: "plan tomorrow",
+        calendarAvailability: [],
+        activeGoals: [],
+        userPatterns: []
+      })
+    ).toThrow();
+  });
+
   it("planner turns vague intention into checkable block drafts and logs run", async () => {
     const store = createMemoryStore();
     const runs = createAgentRunService(store);

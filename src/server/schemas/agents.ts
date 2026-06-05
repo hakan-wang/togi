@@ -16,12 +16,14 @@ export const agentRunSchema = z.object({
 
 export const plannerAgentInputSchema = z.object({
   request: nonEmptyString,
-  calendarAvailability: z.array(
-    z.object({
-      startTime: isoDateTimeSchema,
-      endTime: isoDateTimeSchema
-    })
-  ),
+  calendarAvailability: z
+    .array(
+      z.object({
+        startTime: isoDateTimeSchema,
+        endTime: isoDateTimeSchema
+      })
+    )
+    .min(1),
   activeGoals: z.array(
     z.object({
       id: z.string(),
