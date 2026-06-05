@@ -1,4 +1,4 @@
-import type { RealityLogInput } from "@/lib/zod/contracts";
+import type { PlannerOutput, RealityLogInput } from "@/lib/zod/contracts";
 
 export type BogiStoreClient = {
   // Supabase's generated client type is deeply generic; this store only needs
@@ -15,6 +15,8 @@ export type ExportedUserData = {
   monthlySummaries: unknown[];
   userPatterns: unknown[];
 };
+
+export type SummaryScope = "day" | "week" | "month";
 
 const exportTables: Array<[keyof ExportedUserData, string]> = [
   ["plannedBlocks", "planned_blocks"],
@@ -57,6 +59,67 @@ export function mapRealityLogInsert(userId: string, log: RealityLogInput) {
   };
 }
 
+type PlannedBlock = PlannerOutput["blocks"][number];
+
+export function mapPlannedBlockInsert(userId: string, block: PlannedBlock, calendarEventId: string | null = null) {
+  return {
+    user_id: userId,
+    calendar_event_id: calendarEventId,
+    title: block.title,
+    start_time: block.start,
+    end_time: block.end,
+    intention_text: block.title,
+    success_criteria: block.successCriteria,
+    category: block.category,
+    created_by: "planner_agent"
+  };
+}
+
+export async function savePlannedBlocks(client: BogiStoreClient, userId: string, blocks: PlannedBlock[]) {
+  const saved = [];
+  for (const block of blocks) {
+    const result = await client
+      .from("planned_blocks")
+      .insert(mapPlannedBlockInsert(userId, block))
+      .select("*")
+      .single();
+    if (result.error) throw new Error(result.error.message);
+    saved.push(result.data);
+  }
+  return saved;
+}
+
+export async function saveRealityLog(client: BogiStoreClient, userId: string, log: RealityLogInput) {
+  const result = await client
+    .from("reality_logs")
+    .insert(mapRealityLogInsert(userId, log))
+    .select("*")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
+export function mapCalendarConnectionInsert(userId: string, input: {
+  accessToken: string;
+  refreshToken: string;
+  syncToken?: string | null;
+  channelId?: string | null;
+  resourceId?: string | null;
+  expiresAt?: string | null;
+}) {
+  const insert: Record<string, string | null> = {
+    user_id: userId,
+    provider: "google",
+    access_token: input.accessToken,
+    refresh_token: input.refreshToken
+  };
+  if (input.syncToken !== undefined) insert.sync_token = input.syncToken;
+  if (input.channelId !== undefined) insert.channel_id = input.channelId;
+  if (input.resourceId !== undefined) insert.resource_id = input.resourceId;
+  if (input.expiresAt !== undefined) insert.expires_at = input.expiresAt;
+  return insert;
+}
+
 export function mapScreenFrameBatchInsert(input: {
   userId: string;
   plannedBlockId: string;
@@ -92,4 +155,33 @@ export async function saveScreenFrameBatch(
     .single();
   if (result.error) throw new Error(result.error.message);
   return result.data;
+}
+
+export function getSummaryTable(scope: SummaryScope) {
+  if (scope === "week") return { table: "weekly_summaries", dateColumn: "week_start" };
+  if (scope === "month") return { table: "monthly_summaries", dateColumn: "month_start" };
+  return { table: "daily_summaries", dateColumn: "day" };
+}
+
+export function mapStoredSummary(scope: SummaryScope, row: Record<string, unknown>) {
+  return {
+    scope,
+    summary: String(row.summary ?? ""),
+    stats: row.stats_json ?? {}
+  };
+}
+
+export async function getStoredSummary(
+  client: BogiStoreClient,
+  input: { userId: string; scope: SummaryScope; date: string }
+) {
+  const { table, dateColumn } = getSummaryTable(input.scope);
+  const result = await client
+    .from(table)
+    .select("summary, stats_json")
+    .eq("user_id", input.userId)
+    .eq(dateColumn, input.date)
+    .single();
+  if (result.error) throw new Error(result.error.message);
+  return mapStoredSummary(input.scope, result.data ?? {});
 }
