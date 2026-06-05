@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { services } from "@/server/services/container";
 import { POST } from "./route";
 
 const authedRequest = (body: unknown) =>
@@ -46,5 +47,31 @@ describe("chat route", () => {
         realityLogs: expect.any(Array)
       }
     });
+  });
+
+  it("falls back to a local plan when the live planner is unavailable", async () => {
+    const originalPlan = services.plannerAgent.plan;
+    services.plannerAgent.plan = async () => {
+      throw new Error("429 codex-lb is temporarily overloaded in the proxy_http lane");
+    };
+
+    try {
+      const response = await POST(
+        authedRequest({
+          message: "Plan one focused block even if the live model is overloaded"
+        })
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        mode: "planner",
+        assistantMessage: expect.stringContaining("planned"),
+        artifacts: {
+          plannedBlocks: [expect.objectContaining({ title: "Focused work block" })]
+        }
+      });
+    } finally {
+      services.plannerAgent.plan = originalPlan;
+    }
   });
 });

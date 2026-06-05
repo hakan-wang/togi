@@ -47,6 +47,20 @@ const getState = async (userId: string) => ({
   realityLogs: await services.realityLogs.list(userId)
 });
 
+const fallbackPlan = (message: string, slot: { startTime: string; endTime: string }) => ({
+  blocks: [
+    {
+      title: "Focused work block",
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      intentionText: `Make visible progress on: ${message}`,
+      successCriteria: ["Produce one concrete artifact or decision", "Write a short end-of-block status note"],
+      category: "planning"
+    }
+  ],
+  coachingNote: "The live agent was unavailable, so I made a conservative checkable plan."
+});
+
 export async function POST(request: Request) {
   return withUser(request, async (userId) => {
     const input = await parseJson(request, chatInputSchema);
@@ -54,18 +68,21 @@ export async function POST(request: Request) {
 
     if (planningPattern.test(input.message)) {
       const patterns = await services.patterns.list(userId);
-      const plan = await services.plannerAgent.plan(userId, {
-        request: input.message,
-        calendarAvailability: nextAvailability(),
-        activeGoals: initialState.goals
-          .filter((goal) => goal.status === "active")
-          .map((goal) => ({ id: goal.id, title: goal.title, status: goal.status })),
-        userPatterns: patterns.map((pattern) => ({
-          patternType: pattern.patternType,
-          recommendation: pattern.recommendation,
-          confidence: pattern.confidence
-        }))
-      });
+      const calendarAvailability = nextAvailability();
+      const plan = await services.plannerAgent
+        .plan(userId, {
+          request: input.message,
+          calendarAvailability,
+          activeGoals: initialState.goals
+            .filter((goal) => goal.status === "active")
+            .map((goal) => ({ id: goal.id, title: goal.title, status: goal.status })),
+          userPatterns: patterns.map((pattern) => ({
+            patternType: pattern.patternType,
+            recommendation: pattern.recommendation,
+            confidence: pattern.confidence
+          }))
+        })
+        .catch(() => fallbackPlan(input.message, calendarAvailability[0]));
 
       const plannedBlocks = [];
       for (const draft of plan.blocks) {
