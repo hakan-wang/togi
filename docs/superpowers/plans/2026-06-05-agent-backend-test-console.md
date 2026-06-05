@@ -1,95 +1,65 @@
 # Agent Backend Test Console Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** This plan is intentionally downgraded. Do not implement this before the real LangChain chat agent plan. Use this only as optional internal debug tooling after the user-facing agent loop exists.
 
-**Goal:** Build a `/test-console` Next.js page that exercises every implemented Togi backend route from the browser.
+**Goal:** Preserve the idea of a backend debug console as optional tooling, while preventing it from being mistaken for the product UI.
 
-**Architecture:** Add one client-rendered App Router page that uses same-origin `fetch` and local React state. The backend API routes stay unchanged. A smoke test verifies the route file exists and contains the expected feature sections.
+**Architecture:** The previous plan over-prioritized a comprehensive endpoint test console. That was useful for backend smoke testing, but it was the wrong first UI for this product. The primary plan must be the LangChain tool-calling chat agent; this console is secondary and should not drive product architecture.
 
 **Tech Stack:** Next.js 15 App Router, React 19, TypeScript, Vitest.
 
 ---
 
-## Files
+## Correction
 
-- Create: `src/app/test-console/page.tsx` - client test console UI and fetch helpers.
-- Create: `src/app/test-console/page.test.ts` - static route coverage test.
+The old implementation path was wrong because it made the first visible UI a test harness:
 
-## Task 1: Route Coverage Test
+- raw endpoint controls;
+- bearer-token input;
+- smoke-test buttons;
+- JSON request bodies;
+- no real user conversation loop.
 
-- [ ] **Step 1: Write the failing test**
+For the rebuild, do not start here.
 
-Create `src/app/test-console/page.test.ts`:
+## When This Plan Is Allowed
 
-```ts
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+Only implement this after:
 
-const source = () => readFileSync("src/app/test-console/page.tsx", "utf8");
+- LangChain dependencies are installed;
+- `/api/chat` uses `createAgent()`;
+- tools can read and write Togi state;
+- the user-facing `/` chat mockup works;
+- live inference can call at least one tool.
 
-describe("test console page", () => {
-  it("covers every implemented backend feature group", () => {
-    const page = source();
+## Optional Files
 
-    for (const label of [
-      "Health",
-      "Goals",
-      "Planned Blocks",
-      "Reality Logs",
-      "Agents",
-      "Patterns",
-      "Google Calendar"
-    ]) {
-      expect(page).toContain(label);
-    }
+- `src/app/test-console/page.tsx` - internal debug UI.
+- `src/app/test-console/page.test.ts` - static route coverage test.
 
-    for (const route of [
-      "/api/health",
-      "/api/goals",
-      "/api/planned-blocks",
-      "/api/reality-logs",
-      "/api/agents/planner",
-      "/api/agents/reality-log",
-      "/api/agents/coach",
-      "/api/patterns",
-      "/api/calendar/google/connect",
-      "/api/calendar/google/callback?code=test-code",
-      "/api/calendar/google/sync"
-    ]) {
-      expect(page).toContain(route);
-    }
-  });
-});
-```
+## Optional Scope
 
-- [ ] **Step 2: Verify the test fails**
+If implemented, the console may include:
 
-Run: `npm test -- src/app/test-console/page.test.ts`
-Expected: FAIL because `src/app/test-console/page.tsx` does not exist.
+- health check;
+- goals routes;
+- planned block routes;
+- reality log routes;
+- calendar boundary routes;
+- read-only view of recent agent/tool runs.
 
-## Task 2: Test Console Page
+It must not be presented as the product UI.
 
-- [ ] **Step 1: Implement the page**
+## Constraints
 
-Create `src/app/test-console/page.tsx` as a client component with:
+- Do not add or change agent architecture from this plan.
+- Do not use this plan to justify one-shot chat routing.
+- Do not add fallback text that hides live agent failures.
+- Keep server ports at `3000`, `3001`, `3002`, `3003`, or `3004`.
 
-- `token` state defaulting to `api-user`.
-- `latestGoalId`, `latestBlockId`, and `latestRealityLogId` state.
-- `callApi(method, path, body?)` helper that sends bearer auth, JSON bodies, times requests, and stores formatted results.
-- Sections and buttons for each route listed in Task 1.
-- Prefilled JSON textarea state for create/patch/agent request bodies.
-- `Run all smoke tests` button that calls representative endpoints across the full API surface.
+## Verification
 
-- [ ] **Step 2: Verify targeted test passes**
-
-Run: `npm test -- src/app/test-console/page.test.ts`
-Expected: PASS.
-
-## Task 3: Validation
-
-- [ ] **Step 1: Run full checks**
-
-Run:
+If implemented later, run:
 
 ```bash
 npm run typecheck
@@ -98,18 +68,8 @@ npm test
 npm run build
 ```
 
-Expected: all pass.
-
-- [ ] **Step 2: Commit implementation**
-
-Run:
+Then launch on an allowed port only:
 
 ```bash
-git add src/app/test-console/page.tsx src/app/test-console/page.test.ts
-git commit -m "Add agent backend test console"
+npm run dev -- -p 3000
 ```
-
-- [ ] **Step 3: Start and verify**
-
-Run: `npm run dev`
-Expected: `/test-console` loads and can call at least `/api/health`.
