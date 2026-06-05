@@ -32,6 +32,8 @@ create table if not exists public.planned_blocks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (jsonb_typeof(success_criteria) = 'array'),
+  check (jsonb_array_length(success_criteria) > 0),
+  check (lower(trim(intention_text)) not in ('be productive', 'work', 'focus', 'catch up', 'do stuff')),
   check (end_time > start_time)
 );
 
