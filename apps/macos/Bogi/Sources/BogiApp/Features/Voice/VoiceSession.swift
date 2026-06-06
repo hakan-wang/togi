@@ -129,8 +129,13 @@ final class VoiceSession: ObservableObject {
         Task {
             let granted = await recognizer.requestAuthorization()
             guard granted else {
+                // Hands-free has no window, so a silent denial looks like "nothing happened".
+                // Say it out loud (TTS needs no mic permission) so the reason is clear.
+                let line = "i need microphone and speech access. turn them on in system settings, then tap control again."
+                togiLine = line
+                phase = .speaking
+                await voice.speak(line)
                 phase = .denied
-                togiLine = "i need microphone and speech access. turn them on in system settings."
                 autoIdle(after: 6)
                 return
             }
@@ -270,6 +275,7 @@ final class VoiceSession: ObservableObject {
             phase = .speaking
             await voice.speak(line)
             phase = .denied
+            if handsFree { autoIdle(after: 6) }   // don't get stuck non-idle (a later tap would just cancel)
             return
         }
 
