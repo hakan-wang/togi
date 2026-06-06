@@ -31,7 +31,7 @@ fi
 # Build environment as JSON (only include non-empty optional secrets).
 node -e '
 const v = { BEDROCK_REGION: process.env.REGION, BEDROCK_MODEL_ID: "eu.anthropic.claude-sonnet-4-6", AUTH_DISABLED: process.env.AUTH_DISABLED || "0" };
-for (const k of ["SUPABASE_URL","SUPABASE_ANON_KEY","SUPABASE_SERVICE_KEY","STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","STRIPE_PRICE_MONTHLY","STRIPE_PRICE_ANNUAL","CHECKOUT_SUCCESS_URL","CHECKOUT_CANCEL_URL","BILLING_RETURN_URL","FREE_DAILY_LIMIT"]) if (process.env[k]) v[k] = process.env[k];
+for (const k of ["SUPABASE_URL","SUPABASE_ANON_KEY","SUPABASE_SERVICE_KEY","STRIPE_SECRET_KEY","STRIPE_WEBHOOK_SECRET","STRIPE_PRICE_ID","CHECKOUT_SUCCESS_URL","CHECKOUT_CANCEL_URL","BILLING_RETURN_URL"]) if (process.env[k]) v[k] = process.env[k];
 require("fs").writeFileSync("env.json", JSON.stringify({ Variables: v }));
 ' REGION="$REGION"
 ENV="file://env.json"

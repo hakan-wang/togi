@@ -21,7 +21,7 @@ struct LoginView: View {
                     .frame(width: 56, height: 56)
                 Text("Sign in to Togi")
                     .font(.title2).bold()
-                Text("Free to start. No card needed.")
+                Text("Togi requires an active subscription.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -57,7 +57,7 @@ struct LoginView: View {
             .buttonStyle(.borderedProminent)
             .disabled(!canSubmit)
 
-            Button("Manage subscription on the website", action: openWebsite)
+            Button("Need an account? Subscribe on the website", action: openWebsite)
                 .buttonStyle(.link)
                 .font(.caption)
         }

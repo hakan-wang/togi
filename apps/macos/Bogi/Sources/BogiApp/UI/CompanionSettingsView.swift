@@ -34,7 +34,7 @@ struct CompanionSettingsView: View {
                             try await appState.auth.signIn(email: email, password: password)
                         },
                         openWebsite: {
-                            NSWorkspace.shared.open(URL(string: "https://bogi.sh/account")!)
+                            NSWorkspace.shared.open(WebsiteConfig.accountURL)
                         }
                     )
                 }
