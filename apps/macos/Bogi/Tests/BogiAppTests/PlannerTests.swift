@@ -95,6 +95,20 @@ final class PlannerTests: XCTestCase {
         XCTAssertNil(repo.activeBlock(at: base.addingTimeInterval(1800)))
     }
 
+    func testUpcomingReturnsBlocksStartingWithinWindow() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        repo.upsert(makeBlock(id: "soon", start: now.addingTimeInterval(600), end: now.addingTimeInterval(2400)))      // +10 min
+        repo.upsert(makeBlock(id: "edge", start: now.addingTimeInterval(1800), end: now.addingTimeInterval(3600)))     // +30 min
+        repo.upsert(makeBlock(id: "far", start: now.addingTimeInterval(4000), end: now.addingTimeInterval(5000)))      // +66 min
+        repo.upsert(makeBlock(id: "past", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(600)))      // started
+
+        let upcoming = repo.upcoming(within: 31 * 60, from: now)
+        XCTAssertEqual(upcoming.map(\.id), ["soon", "edge"])
+    }
+
     func testBlocksOnDay() throws {
         let db = try DatabaseService(inMemory: true)
         let repo = PlannedBlockRepository(database: db)

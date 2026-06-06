@@ -48,6 +48,18 @@ final class PlannedBlockRepository {
         } ?? nil
     }
 
+    /// Blocks that START within the next `seconds` from `now` (exclusive of already-started
+    /// blocks), ordered by start time. Used by the pre-meeting reminder loop.
+    func upcoming(within seconds: TimeInterval, from now: Date = Date()) -> [PlannedBlock] {
+        let until = now.addingTimeInterval(seconds)
+        return (try? database.dbQueue.read { db in
+            try PlannedBlock
+                .filter(Column("start_at") > now && Column("start_at") <= until)
+                .order(Column("start_at"))
+                .fetchAll(db)
+        }) ?? []
+    }
+
     func delete(id: String) {
         _ = try? database.dbQueue.write { db in
             try PlannedBlock.deleteOne(db, key: id)

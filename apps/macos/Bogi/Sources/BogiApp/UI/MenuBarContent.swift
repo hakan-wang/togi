@@ -9,6 +9,8 @@ struct MenuBarContent: View {
 
         Button("Check in now") { appState.runJudgeNow?() }
 
+        Button("Plan my day with Togi") { appState.planDay?() }
+
         Button("Take a breath") { appState.startCalm?() }
 
         Menu("Togi vitality (demo)") {
