@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Identity -->
+    <key>CFBundleName</key>
+    <string>Bogi</string>
+    <key>CFBundleDisplayName</key>
+    <string>Bogi</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.bogi.Bogi</string>
+    <key>CFBundleExecutable</key>
+    <string>Bogi</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <!-- CFBundleShortVersionString / CFBundleVersion are injected at package time
+         by scripts/macos/package-dmg.sh (kept out of source to avoid churn). -->
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- Menu-bar / floating-mascot app: no Dock icon, accessory activation. -->
+    <key>LSUIElement</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!--
+      Accessibility rationale. macOS does NOT surface a usage-description string
+      for the Accessibility (AXUIElement) permission — the consent prompt is
+      system-generated and the grant lives in System Settings → Privacy &
+      Security → Accessibility. The just-in-time onboarding primer
+      (Features/Onboarding) presents this same plain-language rationale before
+      the system prompt. This non-standard key documents the rationale alongside
+      the other usage strings; it is informational only.
+    -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Bogi reads on-screen text via macOS Accessibility (never screenshots or screen recording) to notice what you are actually doing and compare it against what you planned. All captured text stays on your Mac.</string>
+
+    <!-- Calendars (EventKit). macOS 14 splits calendar access into full vs.
+         write-only; Bogi needs full access to reconcile planned blocks. -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>Bogi reads your calendar to compare the intentions you planned against what you actually did. Calendar data stays on your Mac.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Bogi reads your calendar to compare the intentions you planned against what you actually did. Calendar data stays on your Mac.</string>
+
+    <!-- Microphone (push-to-talk voice notes / "Hey Bogi"). -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Bogi uses the microphone only while you hold push-to-talk to capture a voice note or talk to your coach. Audio is transcribed and not stored as a recording.</string>
+
+    <!-- Sparkle auto-update configuration.
+         SUPublicEDKey is the EdDSA public key that matches the private key used
+         to sign updates (see Distribution/README.md). Replace the placeholder
+         with your real public key before shipping. -->
+    <key>SUFeedURL</key>
+    <string>https://updates.bogi.app/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>REPLACE_WITH_YOUR_SPARKLE_EDDSA_PUBLIC_KEY</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+</dict>
+</plist>
