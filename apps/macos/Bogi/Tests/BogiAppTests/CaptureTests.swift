@@ -102,4 +102,11 @@ final class CaptureTests: XCTestCase {
         XCTAssertFalse(controller.performTick())
         XCTAssertEqual(store.count(), 0)
     }
+    func testSnapshotCarriesFocusedFlag() {
+        let snap = CaptureSnapshot(
+            activeApp: "Xcode", bundleId: "com.apple.dt.Xcode",
+            windowTitle: "Bogi", text: "hello", hasSecureField: false
+        )
+        XCTAssertTrue(snap.focused, "captured snapshot is the focused window by default")
+    }
 }
