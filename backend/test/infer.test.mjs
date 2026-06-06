@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildInferResponse, buildCheckoutForm, subscriptionGate } from "../src/handler.mjs";
+import { buildInferResponse, buildCheckoutForm, subscriptionGate, buildAccountStatus } from "../src/handler.mjs";
 
 test("buildCheckoutForm builds a single-price subscription form with user binding", () => {
   const form = buildCheckoutForm({
@@ -43,6 +43,11 @@ test("subscriptionGate blocks unpaid users with 403", () => {
 test("subscriptionGate allows paid users", () => {
   const g = subscriptionGate(true);
   assert.equal(g.allow, true);
+});
+
+test("buildAccountStatus returns paid, plan, userId only", () => {
+  const body = buildAccountStatus({ paid: true, plan: "pro", userId: "u1" });
+  assert.deepEqual(body, { paid: true, plan: "pro", userId: "u1" });
 });
 
 test("buildInferResponse returns text, content, stopReason for tool calls", () => {

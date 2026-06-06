@@ -72,6 +72,10 @@ export function buildCheckoutForm({ userId, email, stripeCustomerId, priceId, su
   return form;
 }
 
+export function buildAccountStatus({ paid, plan, userId }) {
+  return { paid, plan, userId };
+}
+
 // Paid-only access decision. Pure + exported for tests.
 export function subscriptionGate(paid) {
   if (!paid) return { allow: false, status: 403, body: { error: "subscription_required" } };
@@ -115,12 +119,7 @@ async function accountStatus(event) {
   const user = await authUser(event);
   if (!user) return json(401, { error: "unauthorized" });
   const { paid, plan } = await fetchProfile(user.id);
-  let freeRemaining = null;
-  if (!paid) {
-    const used = await usageToday(user.id);
-    freeRemaining = Math.max(0, FREE_DAILY_LIMIT - used);
-  }
-  return json(200, { paid, plan, userId: user.id, freeLimit: FREE_DAILY_LIMIT, freeRemaining });
+  return json(200, buildAccountStatus({ paid, plan, userId: user.id }));
 }
 
 // --- /v1/stripe/checkout (auth required; opens a subscription Checkout) ---
