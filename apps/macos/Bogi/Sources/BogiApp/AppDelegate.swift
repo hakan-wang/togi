@@ -162,9 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
                 ask: { question in try await state.coach.ask(question) },
-                onSettings: { AppDelegate.openSettings() },
                 onClose: { [weak self] in self?.companion?.orderOut(nil) }
             )
+            .environmentObject(state)
         }
         companion = panel
         return panel

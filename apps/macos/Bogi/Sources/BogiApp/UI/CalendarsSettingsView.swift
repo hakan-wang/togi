@@ -19,7 +19,7 @@ struct CalendarsSettingsView: View {
     }
 }
 
-private struct GoogleCalendarRow: View {
+struct GoogleCalendarRow: View {
     @ObservedObject var sync: CalendarSyncCoordinator
     @State private var working = false
 
