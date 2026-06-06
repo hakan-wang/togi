@@ -1,19 +1,17 @@
 /* ============================================================
-   Togi — variant B shell + the live vertical-slice orchestration.
-   The check-in pipeline (transcribe → categorize → clarify? → persist → Real →
-   insight → grow vocabulary) lives in handleCheckin().
+   Togi — variant B shell + live capture orchestration.
+   handleCapture(ctx, input) runs the pipeline for ANY entry point:
+   transcribe → categorize (with vocab) → clarify? → persist → Real → insight → grow vocab.
    ============================================================ */
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import {
-  DOMAINS, DAY_START, JUST_ENDED, NOW, REAL_SEED, RealEntry, STARTER_ACTIVITIES,
-} from "../lib/data";
+import { DOMAINS, DAY_START, Domain, JUST_ENDED, NOW, PLAN, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
 import { addActivity, addProject, loadRealEntries, loadVocabulary, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
 import { IcChevron, IcInsights, IcMic, IcSettings, IcToday } from "./icons";
-import { TodayCheckin, InsightBanner, CheckinInput, CheckinResult } from "./Today";
+import { TodayCheckin, InsightBanner, CapContext, CheckinInput, CheckinResult } from "./Today";
 import { DayCalendar } from "./Calendar";
 import { TogiDock } from "./Dock";
 import { SessionsView } from "./Sessions";
@@ -44,24 +42,36 @@ function SidebarB({ tab, setTab, collapsed, setCollapsed, onTalk }: any) {
         ))}
       </div>
       <div className="sb-foot">
-        <button className="sb-user" title="Håkan Wang">
-          <span className="avatar">H</span>
-          {!collapsed && <div className="sb-user-txt"><div className="rail-user-name">Håkan Wang</div><div className="rail-user-sub">Private</div></div>}
-        </button>
-        <button className="sb-collapse" onClick={() => setCollapsed((v: boolean) => !v)} title={collapsed ? "Expand" : "Collapse"}>
-          <IcChevron size={16} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} />
-        </button>
+        <button className="sb-user" title="Håkan Wang"><span className="avatar">H</span>{!collapsed && <div className="sb-user-txt"><div className="rail-user-name">Håkan Wang</div><div className="rail-user-sub">Private</div></div>}</button>
+        <button className="sb-collapse" onClick={() => setCollapsed((v: boolean) => !v)} title={collapsed ? "Expand" : "Collapse"}><IcChevron size={16} style={{ transform: collapsed ? "none" : "rotate(180deg)" }} /></button>
       </div>
     </nav>
   );
 }
 
 const ACCENT = "#2f6bf6";
+const PINNED_CTX: CapContext = { title: JUST_ENDED.block, domain: JUST_ENDED.domain, window: JUST_ENDED.window, planId: JUST_ENDED.planId, mins: JUST_ENDED.mins, kind: "checkin", prompt: `${JUST_ENDED.block} just ended — tell me what really happened.` };
+
+// build a capture context for the various entry points
+function blockCtx(b: any): CapContext {
+  const planId = b.slot || b.id;
+  const win = b.start != null && b.end != null ? `${fmt(b.start)}–${fmt(b.end)}` : undefined;
+  return { title: b.title, domain: b.domain as Domain, planId, window: win, kind: "checkin", prompt: `${b.title} — what really happened?` };
+}
+function blockCtxByName(name: string): CapContext {
+  const p = PLAN.find((x) => x.title === name);
+  if (p) return blockCtx({ ...p, slot: p.id });
+  return { title: name, domain: "Work", kind: "checkin", prompt: `${name} — what really happened?` };
+}
+function selfCtx(label: string): CapContext {
+  return { title: "Untracked time", domain: "Leisure", window: label, kind: "self", prompt: `Nothing was planned ${label} — what did you actually get up to?` };
+}
 
 export function TogiAppB() {
   const [tab, setTab] = useState("today");
   const [view, setView] = useState("real");
   const [session, setSession] = useState<any>(null);
+  const [capture, setCapture] = useState<{ context: CapContext } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [coach, setCoach] = useState<any>({ state: "pending", msg: null });
   const [banner, setBanner] = useState(true);
@@ -93,7 +103,6 @@ export function TogiAppB() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSession({ mode: "ask" }); }
-      if (e.key === "Escape") setSession(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -101,11 +110,14 @@ export function TogiAppB() {
   useEffect(() => () => clearTimeout(ackTimer.current), []);
 
   const openSession = (mode: string, ctx?: any) => setSession({ mode, ctx });
-  const logged = (msg?: string) => {
-    clearTimeout(ackTimer.current);
-    setCoach({ state: "ack", msg });
-    ackTimer.current = setTimeout(() => setCoach({ state: "idle" }), 4800);
+  // route check-in/self entry points to the REAL capture card; ask/plan stay scripted
+  const startSession = (mode: string, arg?: any) => {
+    if (mode === "self") setCapture({ context: selfCtx(typeof arg === "string" ? arg : "then") });
+    else if (mode === "checkin") setCapture({ context: blockCtxByName(typeof arg === "string" ? arg : JUST_ENDED.block) });
+    else openSession(mode, arg);
   };
+
+  const logged = (msg?: string) => { clearTimeout(ackTimer.current); setCoach({ state: "ack", msg }); ackTimer.current = setTimeout(() => setCoach({ state: "idle" }), 4800); };
 
   function placeLive(entry: RealEntry, durationMin?: number): RealEntry {
     if (entry.slot) return entry;
@@ -113,55 +125,29 @@ export function TogiAppB() {
     return { ...entry, off: true, end: NOW, start: Math.max(DAY_START, NOW - dur) };
   }
 
-  // ---- THE VERTICAL SLICE ----
-  async function handleCheckin(input: CheckinInput): Promise<CheckinResult> {
+  // ---- THE PIPELINE (any entry point) ----
+  async function handleCapture(ctx: CapContext, input: CheckinInput): Promise<CheckinResult> {
     let utterance = (input.text || "").trim();
     if (input.clarifyAnswer && input.draftText) utterance = `${input.draftText}. ${input.clarifyAnswer}`.trim();
     if (!utterance && input.blob) utterance = await transcribeAudio(input.blob);
     if (!utterance) throw new Error("Didn’t catch that — try again, or type instead.");
 
-    const ctx = { block: JUST_ENDED.block, planId: JUST_ENDED.planId, window: JUST_ENDED.window, kind: "checkin" };
-    const r = await categorizeText(utterance, ctx, vocab);
+    const r = await categorizeText(utterance, { block: ctx.title, planId: ctx.planId, window: ctx.window, kind: ctx.kind }, vocab);
+    if (!input.clarifyAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
 
-    // confidence gate: ask once before saving
-    if (!input.clarifyAnswer && r.confidence < 0.6 && r.clarify_question) {
-      return { status: "clarify", question: r.clarify_question, draftText: utterance };
-    }
-
-    const matchedPlanId = r.matched ? JUST_ENDED.planId : null;
+    const matchedPlanId = r.matched && ctx.planId ? ctx.planId : null;
     const entry = placeLive({
-      id: `live-${Date.now()}`,
-      slot: matchedPlanId || undefined,
-      off: !matchedPlanId,
-      match: r.matched,
-      domain: r.domain,
-      project: r.project,
-      activity: r.activity,
-      title: r.title,
-      note: r.note,
-      confidence: r.confidence,
-      live: true,
+      id: `live-${Date.now()}`, slot: matchedPlanId || undefined, off: !matchedPlanId, match: r.matched,
+      domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note, confidence: r.confidence, live: true,
     }, r.durationMin ?? undefined);
 
     const next = [...real, entry];
-    setReal(next);
-    setTab("today"); setView("real");
-    setInsight(computeInsight(next));
+    setReal(next); setTab("today"); setView("real"); setInsight(computeInsight(next));
 
-    // grow the vocabulary (new activity always allowed; new project only when declared → returned)
-    if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) {
-      addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] }));
-    }
-    if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) {
-      addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] }));
-    }
+    if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
+    if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
 
-    await saveRealEntry({
-      title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note,
-      duration_min: r.durationMin, matched_plan_id: matchedPlanId, matched: r.matched, confidence: r.confidence,
-      transcript: utterance, started_at: null,
-    });
-
+    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: r.durationMin, matched_plan_id: matchedPlanId, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: null });
     logged(`Logged: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity}`);
     return { status: "done" };
   }
@@ -180,31 +166,22 @@ export function TogiAppB() {
       <main className="content-b">
         {tab === "today" && (
           <div className="content-today">
-            {coach.state === "pending" && <TodayCheckin onSubmit={handleCheckin} />}
+            {coach.state === "pending" && <TodayCheckin onSubmit={(input) => handleCapture(PINNED_CTX, input)} />}
             {banner && <InsightBanner data={insight} onApply={() => { setTab("today"); openSession("plan"); }} onDismiss={() => setBanner(false)} />}
             <div className="content-cal">
               <DayCalendar view={view} setView={setView} real={real} density="regular"
                 onPlanDay={(d: any) => openSession("plan", d && d.d)}
-                onSelfCheckin={(label: string) => openSession("self", label)}
-                onTalkBlock={(b: any) => openSession("checkin", b && b.title)} />
+                onSelfCheckin={(label: string) => setCapture({ context: selfCtx(label) })}
+                onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })} />
             </div>
           </div>
         )}
-        {tab === "sessions" && (<div className="content-scroll"><SessionsView onOpenSession={openSession} /></div>)}
-        {tab === "insights" && (
-          <div className="content-scroll"><div className="surface-inner">
-            <header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header>
-            <InsightsPage onOpenSession={openSession} />
-          </div></div>
-        )}
-        {tab === "settings" && (
-          <div className="content-scroll"><div className="surface-inner">
-            <header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header>
-            <SettingsPage />
-          </div></div>
-        )}
+        {tab === "sessions" && (<div className="content-scroll"><SessionsView onOpenSession={startSession} /></div>)}
+        {tab === "insights" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header><InsightsPage onOpenSession={openSession} /></div></div>)}
+        {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage /></div></div>)}
       </main>
-      {dockVisible && <TogiDock onOpenSession={openSession} coach={coach} />}
+      {dockVisible && <TogiDock onOpenSession={startSession} coach={coach} />}
+      {capture && <TodayCheckin context={capture.context} onSubmit={(input) => handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
       {session && <SessionOverlay mode={session.mode} ctx={session.ctx} onClose={() => setSession(null)} onAction={onAction} />}
     </div>
   );

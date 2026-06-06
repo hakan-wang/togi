@@ -263,6 +263,9 @@
 .checkin-done kbd { background: rgba(255,255,255,0.22); color: #fff; }
 .checkin-x { width: auto; gap: 5px; padding: 0 9px; border-radius: 999px; }
 .checkin-x kbd { background: transparent; color: var(--togi-muted); padding: 0; }
+/* capture card shown as an overlay (self check-in / tap a block or gap) */
+.capture-wrap { width: 720px; max-width: 92vw; }
+.capture-wrap .checkin-card { animation: sx-pop .3s var(--ease-bogi); }
 
 /* ---- slim insight banner ---- */
 .insight-banner {
