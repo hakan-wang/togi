@@ -16,8 +16,6 @@ const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || "";
 const CHECKOUT_SUCCESS_URL = process.env.CHECKOUT_SUCCESS_URL || "https://heytogi.com/upgrade-success";
 const CHECKOUT_CANCEL_URL = process.env.CHECKOUT_CANCEL_URL || "https://heytogi.com/upgrade-cancelled";
 const BILLING_RETURN_URL = process.env.BILLING_RETURN_URL || "https://heytogi.com";
-// Free tier: this many AI calls per user per UTC day before the paywall. One-line knob.
-const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || "5");
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
 
 const bedrock = new BedrockRuntimeClient({ region: REGION });
@@ -74,6 +72,12 @@ export function buildCheckoutForm({ userId, email, stripeCustomerId, priceId, su
   return form;
 }
 
+// Paid-only access decision. Pure + exported for tests.
+export function subscriptionGate(paid) {
+  if (!paid) return { allow: false, status: 403, body: { error: "subscription_required" } };
+  return { allow: true };
+}
+
 async function healthz() {
   const { text } = await callBedrock({
     messages: [{ role: "user", content: "Reply with exactly: bogi-bedrock-ok" }],
@@ -83,22 +87,15 @@ async function healthz() {
   return json(200, { ok: true, model: MODEL_ID, region: REGION, bedrock: text.trim(), authDisabled: AUTH_DISABLED });
 }
 
-// --- /v1/infer (auth + paid-or-free-quota gated) ---
+// --- /v1/infer (auth + subscription gated) ---
 
 async function infer(event) {
   const user = await authUser(event);
   if (!user) return json(401, { error: "unauthorized" });
 
-  // Paid users are unlimited. Free users get FREE_DAILY_LIMIT calls per UTC day, then 402.
   const { paid } = await fetchProfile(user.id);
-  let freeRemaining = null;
-  if (!paid) {
-    const gate = await consumeFreeCredit(user.id);
-    if (!gate.allowed) {
-      return json(402, { error: "quota_exhausted", limit: FREE_DAILY_LIMIT, used: gate.used });
-    }
-    freeRemaining = Math.max(0, FREE_DAILY_LIMIT - gate.used);
-  }
+  const gate = subscriptionGate(paid);
+  if (!gate.allow) return json(gate.status, gate.body);
 
   const body = parseBody(event);
   if (!body?.messages?.length) return json(400, { error: "messages_required" });
@@ -109,7 +106,7 @@ async function infer(event) {
     maxTokens: Math.min(body.maxTokens || 1024, 8192),
     temperature: body.temperature ?? 0,
   });
-  return json(200, { ...buildInferResponse(parsed), paid, freeRemaining });
+  return json(200, { ...buildInferResponse(parsed), paid });
 }
 
 // --- /v1/account/status ---
@@ -316,41 +313,6 @@ function planFromPrice(obj) {
   const priceId = obj.items?.data?.[0]?.price?.id || obj.plan?.id || null;
   if (priceId && priceId === STRIPE_PRICE_ID) return "pro";
   return "pro";
-}
-
-// Atomically consume one free credit for today. Fails OPEN on infra errors so a DB hiccup
-// never blocks a user mid-task (the downside is a few extra cheap calls, not lost trust).
-async function consumeFreeCredit(userId) {
-  if (AUTH_DISABLED) return { allowed: true, used: 0 };
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { allowed: true, used: 0 };
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/consume_ai_credit`, {
-      method: "POST",
-      headers: { ...svcHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ p_user: userId, p_day: todayUTC(), p_max: FREE_DAILY_LIMIT }),
-    });
-    if (!res.ok) {
-      console.warn("consume_ai_credit failed", res.status);
-      return { allowed: true, used: 0 };
-    }
-    const out = await res.json();
-    const row = Array.isArray(out) ? out[0] : out;
-    return { allowed: !!row?.allowed, used: Number(row?.used ?? 0) };
-  } catch (err) {
-    console.warn("consume_ai_credit error", err);
-    return { allowed: true, used: 0 };
-  }
-}
-
-async function usageToday(userId) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return 0;
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/ai_usage?user_id=eq.${encodeURIComponent(userId)}&day=eq.${todayUTC()}&select=count`,
-    { headers: svcHeaders() }
-  );
-  if (!res.ok) return 0;
-  const rows = await res.json();
-  return Number(rows?.[0]?.count ?? 0);
 }
 
 // --- Stripe REST (no SDK; form-encoded like the Stripe API expects) ---
