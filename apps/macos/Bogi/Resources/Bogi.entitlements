@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Bogi ships as a Developer ID app with the Hardened Runtime enabled (a
+      notarization requirement). It is intentionally NOT sandboxed: reading the
+      Accessibility tree of *other* applications via AXUIElement is incompatible
+      with the App Sandbox, so `com.apple.security.app-sandbox` is deliberately
+      absent.
+
+      Accessibility access has no entitlement key — it is granted at runtime via
+      TCC (System Settings → Privacy & Security → Accessibility). The just-in-time
+      onboarding primer explains this before the system prompt. See the matching
+      Info.plist for the user-facing usage strings.
+    -->
+
+    <!-- Microphone: push-to-talk voice capture / "Hey Bogi".
+         Pairs with NSMicrophoneUsageDescription in Info.plist. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Calendars (EventKit): planner reconcile of intentions vs. reality.
+         Pairs with NSCalendarsUsageDescription / NSCalendarsFullAccessUsageDescription. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+
+    <!-- Outgoing network: the stateless AWS inference proxy, Supabase paid-status
+         check, and the Sparkle appcast/download. Required for the client side of
+         network connections. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparkle appcast for Bogi.
+
+  This is a TEMPLATE. Each release adds one <item> to the top of the list.
+  Replace every ALL_CAPS placeholder with real values produced by the release
+  pipeline (see Distribution/README.md):
+
+    VERSION_SHORT   Marketing version, e.g. 0.1.0  (sparkle:shortVersionString)
+    VERSION_BUILD   Monotonic build number, e.g. 1 (sparkle:version)
+    PUB_DATE        RFC 822 date, e.g. `date -R`
+    DOWNLOAD_URL    HTTPS URL of the notarized .dmg
+    FILE_SIZE       Size of the .dmg in bytes
+    ED_SIGNATURE    EdDSA signature from `sign_update Bogi-<version>.dmg`
+
+  The matching EdDSA *public* key must be set as SUPublicEDKey in
+  Resources/Info.plist. Bogi requires macOS 14+, hence minimumSystemVersion.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Bogi</title>
+    <link>https://updates.bogi.app/appcast.xml</link>
+    <description>Updates for Bogi — private AI accountability coach.</description>
+    <language>en</language>
+
+    <item>
+      <title>Bogi VERSION_SHORT</title>
+      <pubDate>PUB_DATE</pubDate>
+      <sparkle:version>VERSION_BUILD</sparkle:version>
+      <sparkle:shortVersionString>VERSION_SHORT</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>What's new in VERSION_SHORT</h2>
+        <ul>
+          <li>Describe the changes in this release here.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="DOWNLOAD_URL"
+        sparkle:version="VERSION_BUILD"
+        sparkle:shortVersionString="VERSION_SHORT"
+        sparkle:edSignature="ED_SIGNATURE"
+        length="FILE_SIZE"
+        type="application/octet-stream" />
+    </item>
+
+  </channel>
+</rss>
