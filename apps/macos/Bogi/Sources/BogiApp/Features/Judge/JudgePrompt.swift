@@ -4,29 +4,14 @@ import Foundation
 /// the recent observations, and how long the user has already drifted off-task.
 struct JudgeInput {
     var activeBlock: (title: String, category: String?, startAt: Date, endAt: Date)?
-    var observations: [(t: Date, app: String?, window: String?, text: String?)]
+    var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
-    /// The user's single overarching life goal, injected so the judge can weigh drift against it.
-    var northStar: String? = nil
 }
 
-/// Builds the system + user prompt for the activity judge. Pure string construction so the
-/// shape of what we send the LLM is unit-testable.
+/// Builds the user payload for the activity judge tick. Pure string construction so the
+/// shape of what we send the agent is unit-testable. The persona/segmentation instructions
+/// now live in the sidecar agent; this only serializes the observations + active block.
 enum JudgePrompt {
-    static let system = """
-    You are Togi's activity judge. You receive ~5 minutes of a user's on-screen activity \
-    and the calendar block they planned. Return STRICT JSON only. \
-    1) Segment activity into time segments each labeled category, sub_category, sub_sub \
-    (short concrete description) with minutes. \
-    2) Judge on_task: does the dominant activity match the planned block's intent? \
-    3) Decide a nudge only if sustainedly off-task vs plan; if on-task or no plan, \
-    should=false. When you do nudge, write the message in a kind, supportive voice: \
-    be specific and honest about the drift, but gentle and encouraging, never harsh or \
-    preachy, and frame it as a small nudge back toward the plan. If a north_star is \
-    provided, connect the drift to the bigger goal the user said they care about. \
-    Never use em-dashes in the message; use commas, periods, or parentheses instead.
-    """
-
     // Expected output JSON shape (strict, no prose):
     // {
     //   "segments": [
@@ -61,12 +46,8 @@ enum JudgePrompt {
 
         root["recent_off_task_minutes"] = input.recentOffTaskMinutes
 
-        if let northStar = input.northStar, !northStar.isEmpty {
-            root["north_star"] = northStar
-        }
-
         root["observations"] = input.observations.map { obs -> [String: Any] in
-            var o: [String: Any] = ["t": iso.string(from: obs.t)]
+            var o: [String: Any] = ["t": iso.string(from: obs.t), "focused": obs.focused]
             if let app = obs.app { o["app"] = app }
             if let window = obs.window { o["window"] = window }
             if let text = obs.text { o["text"] = text }

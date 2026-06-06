@@ -137,13 +137,9 @@ struct OnboardingView: View {
             if let error = coordinator.errorText {
                 Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
             }
-            if !OnboardingConfig.googleConfigured {
-                Text("calendar setup is being finalized — you can connect right after.")
-                    .font(.caption).foregroundStyle(BogiColor.muted).multilineTextAlignment(.center)
-            }
             Spacer()
             primaryButton(coordinator.busy ? "connecting…" : "connect google calendar",
-                          enabled: OnboardingConfig.googleConfigured && !coordinator.busy) {
+                          enabled: !coordinator.busy) {
                 Task { await coordinator.connectCalendar() }
             }
             secondaryButton("connect later") { coordinator.skip() }

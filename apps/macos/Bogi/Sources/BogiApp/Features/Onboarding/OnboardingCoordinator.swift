@@ -83,20 +83,20 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     func connectCalendar() async {
-        guard OnboardingConfig.googleConfigured, let anchor = hostWindow else { return }
+        guard !busy else { return }
         busy = true
         errorText = nil
         do {
-            try await googleCalendar.authorize(clientId: OnboardingConfig.googleClientId, presentationAnchor: anchor)
+            // Loopback OAuth (Erik's flow): opens the default browser, no in-app web sheet needed.
+            try await googleCalendar.authorize(clientId: GoogleConfig.clientID, clientSecret: GoogleConfig.clientSecret)
+            settings.setBool("google_connected", true)
+            NSApp.activate(ignoringOtherApps: true)
             calendarConnected = true
             busy = false
             advance()
         } catch {
             busy = false
-            // A user-cancelled web sheet is not an error worth surfacing; let them retry or skip.
-            if (error as NSError).code != ASWebAuthenticationSessionError.Code.canceledLogin.rawValue {
-                errorText = "Couldn't connect to Google. Try again, or connect later."
-            }
+            errorText = "Couldn't connect to Google. Try again, or connect later."
         }
     }
 

@@ -27,12 +27,43 @@ for bundle in "$(dirname "$BIN")"/*.bundle; do
 done
 # cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
 
+echo "== sidecar (Node + LangChain.js agent) =="
+SIDECAR_SRC="sidecar"
+RESOURCES="$APP/Contents/Resources"
+SIDECAR_DST="$RESOURCES/sidecar"
+NODE_VERSION="v22.11.0"
+NODE_PKG="node-${NODE_VERSION}-darwin-arm64"
+
+( cd "$SIDECAR_SRC" && npm ci && npm run build )
+
+mkdir -p "$SIDECAR_DST"
+cp "$SIDECAR_SRC/dist/main.cjs" "$SIDECAR_DST/main.cjs"
+# Ship the sidecar's node_modules so native deps (better-sqlite3 -> bindings ->
+# file-uri-to-path) resolve. main.cjs lives in Resources/sidecar/, so Node resolves
+# Resources/sidecar/node_modules automatically — no explicit NODE_PATH needed.
+cp -R "$SIDECAR_SRC/node_modules" "$SIDECAR_DST/node_modules"
+
+# Embed the pinned Node runtime.
+if [ ! -x "$SIDECAR_DST/node" ]; then
+  curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${NODE_PKG}.tar.gz" -o "/tmp/${NODE_PKG}.tar.gz"
+  tar xzf "/tmp/${NODE_PKG}.tar.gz" -C /tmp
+  cp "/tmp/${NODE_PKG}/bin/node" "$SIDECAR_DST/node"
+fi
+
 if [ -n "${DEVELOPER_ID:-}" ]; then
+  echo "== codesign sidecar (hardened runtime) =="
+  # Sign nested executables BEFORE the outer .app so the deep signature is valid.
+  codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$SIDECAR_DST/node"
+  find "$SIDECAR_DST/node_modules" -name "*.node" -print0 | \
+    while IFS= read -r -d '' f; do
+      codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
+    done
+
   echo "== codesign (hardened runtime) =="
   codesign --force --options runtime --timestamp \
     --entitlements "$PKG/Bogi.entitlements" \
     --sign "$DEVELOPER_ID" "$APP"
-  codesign --verify --strict --verbose=2 "$APP"
+  codesign --verify --deep --strict --verbose=2 "$APP"
 
   echo "== dmg =="
   rm -f build/Bogi.dmg

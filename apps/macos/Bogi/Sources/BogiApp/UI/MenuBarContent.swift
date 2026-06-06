@@ -11,6 +11,8 @@ struct MenuBarContent: View {
 
         Toggle("Pause Capture", isOn: $appState.capturePaused)
 
+        Toggle("Show Mascot", isOn: $appState.mascotVisible)
+
         Divider()
 
         SettingsLink {

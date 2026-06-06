@@ -14,6 +14,7 @@ final class CaptureController {
     var isPaused: Bool = false
     private var lastHash: String?
     private var timer: DispatchSourceTimer?
+    private var pruneTimer: DispatchSourceTimer?
 
     init(provider: SnapshotProviding,
          store: ObservationStore,
@@ -36,11 +37,19 @@ final class CaptureController {
         t.setEventHandler { [weak self] in _ = self?.performTick() }
         t.resume()
         timer = t
+
+        let p = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        p.schedule(deadline: .now() + 86_400, repeating: 86_400)  // first daily prune ~24h after launch
+        p.setEventHandler { [weak self] in self?.pruneNow() }
+        p.resume()
+        pruneTimer = p
     }
 
     func stop() {
         timer?.cancel()
         timer = nil
+        pruneTimer?.cancel()
+        pruneTimer = nil
     }
 
     var permissionState: PermissionState {
@@ -70,7 +79,8 @@ final class CaptureController {
             text: snap.text,
             contentHash: snap.contentHash,
             captureMethod: "ax",
-            excluded: false
+            excluded: false,
+            focused: snap.focused
         ))
         return true
     }

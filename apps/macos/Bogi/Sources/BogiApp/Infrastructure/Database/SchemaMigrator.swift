@@ -151,6 +151,14 @@ enum SchemaMigrator {
             }
         }
 
+        // Phase A — explicit focus marker on raw observations (default true: we only
+        // capture the focused window today; this is forward-compatible with background capture).
+        migrator.registerMigration("v3_observation_focused") { db in
+            try db.alter(table: "activity_observations") { t in
+                t.add(column: "focused", .boolean).notNull().defaults(to: true)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

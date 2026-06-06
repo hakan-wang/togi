@@ -36,6 +36,20 @@ final class SearchTests: XCTestCase {
         XCTAssertEqual(search.search("video"), ["b"])
     }
 
+    func testIndexesComposedCategoryPath() throws {
+        let db = try DatabaseService(inMemory: true)
+        let embedder = FakeEmbedding(table: [:], dim: 3) // keyword-only path
+        let search = SearchService(database: db, index: VectorIndex(database: db), embedder: embedder)
+
+        // Build the description the record path composes from a segment's category fields.
+        let desc = ["Distraction", "Social", "Scrolling X feed"]
+            .compactMap { $0 }.joined(separator: " — ")
+        search.indexSegment(id: "seg1", description: desc)
+
+        XCTAssertEqual(search.search("scrolling"), ["seg1"])
+        XCTAssertEqual(search.search("distraction"), ["seg1"])
+    }
+
     func testHybridPrefersSemanticThenKeyword() throws {
         let db = try DatabaseService(inMemory: true)
         let vectors: [String: [Float]] = [

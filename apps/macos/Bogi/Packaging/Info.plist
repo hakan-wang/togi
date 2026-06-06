@@ -25,14 +25,8 @@
     <string>Bogi uses the microphone for "Hey Bogi" voice planning and commands.</string>
     <!-- Accessibility is requested at runtime via the system Accessibility list, not a usage string. -->
 
-    <!-- Google Calendar PKCE redirect (installed-app OAuth, no client secret). -->
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>     <string>sh.bogi.app.oauth</string>
-            <key>CFBundleURLSchemes</key>  <array><string>com.bogi.app</string></array>
-        </dict>
-    </array>
+    <!-- Google Calendar OAuth uses the 127.0.0.1 loopback redirect (Desktop client); no custom
+         URL scheme is needed, so there is no CFBundleURLTypes entry. -->
 
     <!-- Sparkle auto-update (fill in before release). -->
     <key>SUFeedURL</key>     <string>https://updates.bogi.sh/appcast.xml</string>

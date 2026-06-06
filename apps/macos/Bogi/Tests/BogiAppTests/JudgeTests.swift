@@ -32,25 +32,6 @@ final class JudgeTests: XCTestCase {
     }
     """
 
-    // An on-task reply: one segment matching the plan, no nudge.
-    private let onTaskJSON = """
-    {
-      "segments": [
-        {
-          "start_at": "2026-06-06T10:00:00Z",
-          "end_at": "2026-06-06T10:05:00Z",
-          "minutes": 5.0,
-          "category": "Work",
-          "sub_category": "Coding",
-          "sub_sub": "Editing JudgeService.swift",
-          "on_task": true,
-          "confidence": 0.95
-        }
-      ],
-      "nudge": { "should": false, "severity": 0, "message": null }
-    }
-    """
-
     // MARK: - parse
 
     func testParseCleanJSON() throws {
@@ -83,46 +64,42 @@ final class JudgeTests: XCTestCase {
         XCTAssertThrowsError(try JudgeOutput.parse("no json here, sorry"))
     }
 
-    // MARK: - runOnce
+    // MARK: - userJSON
 
-    private func makeInput() -> JudgeInput {
-        let start = ISO8601DateFormatter().date(from: "2026-06-06T10:00:00Z")!
-        return JudgeInput(
-            activeBlock: (title: "Deep work", category: "Work",
-                          startAt: start, endAt: start.addingTimeInterval(3600)),
-            observations: [
-                (t: start, app: "X", window: "Home", text: "scrolling"),
-            ],
-            recentOffTaskMinutes: 0
-        )
+    func testUserJSONIncludesFocusedFlag() {
+        let input = JudgeInput(
+            activeBlock: nil,
+            observations: [(t: Date(timeIntervalSince1970: 0), app: "Xcode",
+                            window: "Bogi", text: "code", focused: true)],
+            recentOffTaskMinutes: 0)
+        let json = JudgePrompt.userJSON(input)
+        XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
     }
 
-    func testRunOnceWritesSegmentsAndReturnsNudge() async throws {
+    // MARK: - offTaskMinutes
+
+    func testOffTaskMinutesSumsOnlyInWindowOffTask() throws {
         let db = try DatabaseService(inMemory: true)
         let store = SegmentStore(database: db)
-        let inference = MockInferenceClient(response: offTaskJSON)
-        let fixedNow = Date(timeIntervalSince1970: 1_000_000)
-        let service = JudgeService(inference: inference, segmentStore: store, clock: { fixedNow })
+        let now = Date(timeIntervalSince1970: 100_000)
 
-        let nudge = try await service.runOnce(input: makeInput())
+        func segment(id: String, startOffset: TimeInterval, minutes: Double, onTask: Bool) -> ActivitySegment {
+            let start = now.addingTimeInterval(startOffset)
+            return ActivitySegment(
+                id: id, startAt: start, endAt: start.addingTimeInterval(minutes * 60),
+                minutes: minutes, plannedBlockId: nil,
+                category: "Distraction", subCategory: nil, subSub: nil,
+                onTask: onTask, confidence: 0.9, judgedAt: now)
+        }
 
-        XCTAssertEqual(store.count(), 2)
-        XCTAssertTrue(nudge.should)
-        XCTAssertEqual(nudge.severity, 2)
-        // The judge actually built and sent a prompt.
-        XCTAssertEqual(inference.lastSystem, JudgePrompt.system)
-        XCTAssertEqual(inference.lastMessages.first?.role, "user")
-    }
+        // In window, off-task → counted (2.5 + 3.5 = 6.0).
+        store.insert(segment(id: "a", startOffset: -600, minutes: 2.5, onTask: false))
+        store.insert(segment(id: "b", startOffset: -1800, minutes: 3.5, onTask: false))
+        // In window but on-task → excluded.
+        store.insert(segment(id: "c", startOffset: -300, minutes: 4.0, onTask: true))
+        // Off-task but older than the 60-min window → excluded.
+        store.insert(segment(id: "d", startOffset: -4000, minutes: 5.0, onTask: false))
 
-    func testRunOnceOnTaskYieldsNoNudge() async throws {
-        let db = try DatabaseService(inMemory: true)
-        let store = SegmentStore(database: db)
-        let inference = MockInferenceClient(response: onTaskJSON)
-        let service = JudgeService(inference: inference, segmentStore: store)
-
-        let nudge = try await service.runOnce(input: makeInput())
-
-        XCTAssertEqual(store.count(), 1)
-        XCTAssertFalse(nudge.should)
+        XCTAssertEqual(store.offTaskMinutes(within: 3600, now: now), 6)
     }
 }

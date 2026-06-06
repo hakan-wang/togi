@@ -1,33 +1,30 @@
 import Foundation
 
 /// Owns the 5-minute judge heartbeat: gather the last 5 min of activity + the active
-/// planned block, run the judge, and route the nudge decision out (to the mascot).
-/// Scheduling lives here so `JudgeService` stays pure/testable.
+/// planned block and forward them to the on-device agent. The agent segments the activity
+/// (via `record_segments`), compares against history, and nudges (via `post_nudge`) — all
+/// in one loop. This coordinator only schedules ticks and builds the payload.
 @MainActor
 final class JudgeCoordinator {
-    private let judge: JudgeService
     private let observations: ObservationStore
     private let blocks: PlannedBlockRepository
-    private let northStar: NorthStarService
-    private let presenter: NudgePresenter
+    private let segments: SegmentStore
+    private let sidecar: SidecarClient
     private let interval: TimeInterval
-    private let onResult: (NudgeDecision, _ onTask: Bool) -> Void
+    /// Rolling window for the off-task minutes fed into nudge urgency (60 min).
+    private let offTaskWindow: TimeInterval = 3600
     private var timer: DispatchSourceTimer?
 
-    init(judge: JudgeService,
-         observations: ObservationStore,
+    init(observations: ObservationStore,
          blocks: PlannedBlockRepository,
-         northStar: NorthStarService,
-         presenter: NudgePresenter,
-         interval: TimeInterval = 300,
-         onResult: @escaping (NudgeDecision, Bool) -> Void) {
-        self.judge = judge
+         segments: SegmentStore,
+         sidecar: SidecarClient,
+         interval: TimeInterval = 300) {
         self.observations = observations
         self.blocks = blocks
-        self.northStar = northStar
-        self.presenter = presenter
+        self.segments = segments
+        self.sidecar = sidecar
         self.interval = interval
-        self.onResult = onResult
     }
 
     func start() {
@@ -50,22 +47,16 @@ final class JudgeCoordinator {
         guard !recent.isEmpty else { return }
 
         let obs = recent.map {
-            (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle, text: $0.text)
+            (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle,
+             text: $0.text, focused: $0.focused)
         }
         let active = blocks.activeBlock(at: now)
         let input = JudgeInput(
             activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: 0,
-            northStar: northStar.current()?.text
+            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now)
         )
-
-        guard let nudge = try? await judge.runOnce(input: input) else { return }
-        let onTask = !nudge.should
-        if nudge.should, let message = nudge.message {
-            onResult(presenter.present(message: message, now: now), onTask)
-        } else {
-            onResult(NudgeDecision(show: false, escalationLevel: 0, playSound: false, text: nil), onTask)
-        }
+        let payload = JudgePrompt.userJSON(input)
+        _ = try? await sidecar.judge(payload, threadId: "judge")
     }
 }

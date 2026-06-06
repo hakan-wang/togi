@@ -81,10 +81,10 @@ final class CaptureTests: XCTestCase {
 
         store.insert(ActivityObservation(id: "old", capturedAt: now.addingTimeInterval(-20 * 86_400),
                                          activeApp: nil, activeAppBundleId: nil, activeWindowTitle: nil,
-                                         text: "old", contentHash: "a", captureMethod: "ax", excluded: false))
+                                         text: "old", contentHash: "a", captureMethod: "ax", excluded: false, focused: true))
         store.insert(ActivityObservation(id: "new", capturedAt: now.addingTimeInterval(-1 * 86_400),
                                          activeApp: nil, activeAppBundleId: nil, activeWindowTitle: nil,
-                                         text: "new", contentHash: "b", captureMethod: "ax", excluded: false))
+                                         text: "new", contentHash: "b", captureMethod: "ax", excluded: false, focused: true))
         XCTAssertEqual(store.count(), 2)
 
         let deleted = RetentionPruner(database: db).prune(retentionDays: 14, now: now)
@@ -101,5 +101,24 @@ final class CaptureTests: XCTestCase {
                                         windowTitle: "Ideas", text: "x", hasSecureField: false)
         XCTAssertFalse(controller.performTick())
         XCTAssertEqual(store.count(), 0)
+    }
+    func testSnapshotCarriesFocusedFlag() {
+        let snap = CaptureSnapshot(
+            activeApp: "Xcode", bundleId: "com.apple.dt.Xcode",
+            windowTitle: "Bogi", text: "hello", hasSecureField: false
+        )
+        XCTAssertTrue(snap.focused, "captured snapshot is the focused window by default")
+    }
+
+    func testStoredObservationIsMarkedFocused() throws {
+        let db = try DatabaseService(inMemory: true)
+        let provider = FakeProvider()
+        provider.next = CaptureSnapshot(
+            activeApp: "Xcode", bundleId: "com.apple.dt.Xcode",
+            windowTitle: "Bogi", text: "writing tests", hasSecureField: false)
+        let (controller, store) = makeController(provider: provider, excludes: .makeDefault(), db: db)
+        XCTAssertTrue(controller.performTick())
+        let stored = store.recent(within: 3600)
+        XCTAssertEqual(stored.first?.focused, true)
     }
 }

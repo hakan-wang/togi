@@ -39,13 +39,9 @@ enum CheckInRhythm: String, CaseIterable, Identifiable {
     }
 }
 
-/// Onboarding-time configuration that isn't part of the core services.
+/// Onboarding-time configuration that isn't part of the core services. Google OAuth now lives in
+/// `GoogleConfig` (shared with the calendar sync coordinator), so it isn't duplicated here.
 enum OnboardingConfig {
-    /// Google installed-app (Desktop / iOS) OAuth client ID. Public for the PKCE flow, no secret.
-    static let googleClientId = "217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb.apps.googleusercontent.com"
-
-    static var googleConfigured: Bool { !googleClientId.isEmpty }
-
     /// Tappable starter goals on the North Star screen, to beat the blank-page freeze.
     static let northStarExamples = [
         "graduate without all-nighters",

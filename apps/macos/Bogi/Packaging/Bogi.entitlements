@@ -11,5 +11,7 @@
     <key>com.apple.security.device.audio-input</key>     <true/>
     <!-- Allow Sparkle's updater XPC / DYLD for the hardened runtime. -->
     <key>com.apple.security.cs.disable-library-validation</key> <true/>
+    <!-- The bundled Node sidecar runtime uses a JIT. -->
+    <key>com.apple.security.cs.allow-jit</key>           <true/>
 </dict>
 </plist>

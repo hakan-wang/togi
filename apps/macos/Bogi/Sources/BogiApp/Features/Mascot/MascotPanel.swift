@@ -17,6 +17,10 @@ final class MascotPanel: NSPanel {
         didSet { /* captured by reference in the hosted view's closure */ }
     }
 
+    /// True once we've placed the panel at its default resting spot. After that,
+    /// `show()` preserves wherever the user last dragged it instead of snapping back.
+    private var hasSetInitialPosition = false
+
     init(viewModel: MascotViewModel? = nil) {
         self.viewModel = viewModel ?? MascotViewModel()
         super.init(
@@ -42,12 +46,21 @@ final class MascotPanel: NSPanel {
     }
 
     func show() {
-        // Bottom-right of the main screen as a default resting spot.
-        if let screen = NSScreen.main {
+        // Bottom-right of the main screen as a default resting spot — only on the
+        // first reveal. Subsequent shows (e.g. after hide, or a nudge auto-reappear)
+        // keep the position the user last dragged the mascot to.
+        if !hasSetInitialPosition, let screen = NSScreen.main {
             let frame = screen.visibleFrame
             setFrameOrigin(NSPoint(x: frame.maxX - 120, y: frame.minY + 80))
+            hasSetInitialPosition = true
         }
         orderFrontRegardless()
+    }
+
+    /// Take the mascot off-screen without tearing down the panel. `show()` brings it
+    /// back at its last position.
+    func hide() {
+        orderOut(nil)
     }
 
     /// Convenience for the common case of just changing mood.

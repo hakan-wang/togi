@@ -23,9 +23,36 @@ final class PlannerService {
     static let statusOrphaned = "orphaned"
 
     private let repository: PlannedBlockRepository
+    private let sidecar: SidecarClient?
 
-    init(repository: PlannedBlockRepository) {
+    init(repository: PlannedBlockRepository, sidecar: SidecarClient? = nil) {
         self.repository = repository
+        self.sidecar = sidecar
+    }
+
+    /// Route a natural-language planning utterance to the on-device agent. The agent calls
+    /// the `create_block` / `move_block` action tools itself, which round-trip back to the
+    /// repository via the app's SidecarActionHandlers.
+    func handle(utterance: String) async throws {
+        guard let sidecar else { return }
+        _ = try await sidecar.plan(utterance, threadId: "planner")
+    }
+
+    /// Move the soonest planned block whose title contains `match` (case-insensitive) to a new
+    /// time window. Returns the moved block, or nil if no block matched. Used by the agent's
+    /// `move_block` action tool.
+    @discardableResult
+    func moveBlock(matching match: String, start: Date, end: Date) -> PlannedBlock? {
+        let needle = match.lowercased()
+        let candidates = repository.all()
+            .filter { $0.title.lowercased().contains(needle) }
+            .sorted { $0.startAt < $1.startAt }
+        guard var block = candidates.first else { return nil }
+        block.startAt = start
+        block.endAt = end
+        block.updatedAt = Date()
+        repository.upsert(block)
+        return block
     }
 
     /// Create a Bogi-owned local block (no external calendar backing).
