@@ -21,14 +21,12 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Bogi"
 cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
-# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) so
-# Bundle.module resolves at runtime inside the .app.
-for bundle in "$(dirname "$BIN")"/*.bundle; do
-  [ -e "$bundle" ] || continue
-  cp -R "$bundle" "$APP/Contents/MacOS/"
-  cp -R "$bundle" "$APP/Contents/Resources/"
-done
-# cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
+# Copy the mascot image straight into Contents/Resources so it loads via Bundle.main
+# on every Mac. (SwiftPM resource bundles are NOT copied: their generated Bundle.module
+# accessor only resolves at the .app root or the build machine's .build path — neither
+# exists in a shipped app, so it crashes off-machine; and a .bundle under Contents/MacOS
+# is unsigned nested code that breaks codesign. See BogiTheme.swift / Package.swift.)
+cp "Sources/BogiApp/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
 
 echo "== sidecar (Node + LangChain.js agent) =="
 SIDECAR_SRC="sidecar"
@@ -55,11 +53,16 @@ fi
 
 if [ -n "${DEVELOPER_ID:-}" ]; then
   echo "== codesign sidecar (hardened runtime) =="
-  # Sign nested executables BEFORE the outer .app so the deep signature is valid.
-  codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$SIDECAR_DST/node"
-  find "$SIDECAR_DST/node_modules" -name "*.node" -print0 | \
+  # Sign EVERY Mach-O binary nested in the sidecar BEFORE the outer .app, so the deep
+  # signature is valid and notarization passes. This must cover not just the Node runtime
+  # and native .node addons, but also plain executables shipped inside node_modules
+  # (e.g. esbuild's bin/esbuild, @esbuild/darwin-arm64/bin/esbuild) which have no .node
+  # extension — notarization rejects ANY unsigned Mach-O, hardened-runtime-less binary.
+  find "$SIDECAR_DST" -type f -print0 | \
     while IFS= read -r -d '' f; do
-      codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
+      if file -b "$f" | grep -q "Mach-O"; then
+        codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
+      fi
     done
 
   echo "== codesign (hardened runtime) =="

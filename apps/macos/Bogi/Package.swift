@@ -22,9 +22,6 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui")
-            ],
-            resources: [
-                .copy("Resources/mascot.png")
             ]
         ),
         .testTarget(

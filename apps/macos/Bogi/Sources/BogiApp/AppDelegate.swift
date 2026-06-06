@@ -259,8 +259,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let win = gateWindow {
             win.contentViewController = NSHostingController(rootView: view)
         } else {
-            let win = NSWindow(contentViewController: NSHostingController(rootView: view))
-            win.styleMask = [.titled]
+            // Build the window with its final style mask up front. Previously this used
+            // NSWindow(contentViewController:) — which yields a .resizable window — and then
+            // mutated styleMask to [.titled]. Changing the style mask while the hosting
+            // controller is still establishing its content-size constraints drove AppKit into
+            // an endless Update-Constraints-in-Window loop, throwing an NSException (SIGTRAP)
+            // that crashed the app on launch. Creating the titled (non-closable) window once,
+            // then attaching the hosting controller, avoids the feedback loop.
+            let win = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 340, height: 420),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            win.contentViewController = NSHostingController(rootView: view)
             win.title = "Togi"
             win.isReleasedWhenClosed = false
             win.center()
