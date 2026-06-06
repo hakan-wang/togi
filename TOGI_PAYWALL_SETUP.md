@@ -6,7 +6,7 @@ money-back guarantee** (no Stripe trial — we just refund on request). All enfo
 server-side; the client is never trusted.
 
 Decisions locked with Michelle on 2026-06-06: model = freemium taste-then-wall, currency =
-USD, free quota = 5/day (one-line knob: `FREE_DAILY_LIMIT`), risk reversal = money-back
+USD, free quota = essentially unlimited for now (one-line knob: `FREE_DAILY_LIMIT`, default 100000 — we want users; tighten later), risk reversal = money-back
 guarantee instead of a trial.
 
 ---
@@ -75,7 +75,7 @@ export STRIPE_WEBHOOK_SECRET=whsec_...
 export STRIPE_PRICE_MONTHLY=price_...
 export STRIPE_PRICE_ANNUAL=price_...
 # optional, sensible defaults already baked in:
-# CHECKOUT_SUCCESS_URL, CHECKOUT_CANCEL_URL, BILLING_RETURN_URL, FREE_DAILY_LIMIT=5
+# CHECKOUT_SUCCESS_URL, CHECKOUT_CANCEL_URL, BILLING_RETURN_URL, FREE_DAILY_LIMIT=100000 (essentially unlimited)
 ./deploy.sh
 ```
 

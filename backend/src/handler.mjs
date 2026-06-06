@@ -17,7 +17,9 @@ const CHECKOUT_SUCCESS_URL = process.env.CHECKOUT_SUCCESS_URL || "https://heytog
 const CHECKOUT_CANCEL_URL = process.env.CHECKOUT_CANCEL_URL || "https://heytogi.com/upgrade-cancelled";
 const BILLING_RETURN_URL = process.env.BILLING_RETURN_URL || "https://heytogi.com";
 // Free tier: this many AI calls per user per UTC day before the paywall. One-line knob.
-const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || "5");
+// Default is effectively unlimited for now — we want users, not walls. Usage is still
+// metered in ai_usage, so the cap can be tightened later by setting FREE_DAILY_LIMIT.
+const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || "100000");
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
 
 const bedrock = new BedrockRuntimeClient({ region: REGION });
