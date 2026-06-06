@@ -75,6 +75,7 @@ export function makeWsStream(wsUrl: string, getToken: () => string): StreamFn {
       maxTokens: body.maxTokens,
     }));
 
+    let sawTerminal = false;
     try {
       while (true) {
         while (queue.length === 0 && !closed) {
@@ -84,8 +85,14 @@ export function makeWsStream(wsUrl: string, getToken: () => string): StreamFn {
         if (queue.length === 0 && closed) break;
         const frame = queue.shift()!;
         yield frame;
-        if (frame.type === "stop" || frame.type === "done" || frame.type === "error") break;
+        if (frame.type === "stop" || frame.type === "done" || frame.type === "error") {
+          sawTerminal = true;
+          break;
+        }
       }
+      // A socket that closes before a terminal stop/done/error frame yielded a truncated
+      // turn. Surface it as an error so the caller does not treat a partial reply as success.
+      if (!sawTerminal) throw new Error("websocket closed before completion");
     } finally {
       try { ws.close(); } catch { /* ignore */ }
     }
@@ -152,9 +159,15 @@ export async function runStdio(): Promise<void> {
     write: (l) => process.stdout.write(l),
     setToken: (t) => { currentToken = t ?? envToken; },
   });
+  // Serialize chat/plan/judge dispatches: the model carries a single shared
+  // `activeRequestId`, so overlapping requests (e.g. a Coach chat during a 5-min
+  // judge tick) would misroute streamed token frames. A promise chain ensures only
+  // one dispatch runs at a time. `action_result` frames are processed immediately
+  // (off the chain) so they can unblock the in-flight tool call.
+  let pending: Promise<void> = Promise.resolve();
   const decoder = new LineDecoder((m) => {
     if (m.kind === "action_result") { pendingActions.get((m as any).callId)?.((m as any).result); pendingActions.delete((m as any).callId); return; }
-    void dispatch(m);
+    pending = pending.then(() => dispatch(m)).catch(() => {});
   });
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (c) => decoder.push(String(c)));
