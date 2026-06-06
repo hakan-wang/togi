@@ -27,7 +27,7 @@ struct CoachView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if messages.isEmpty {
-                        Text("Ask Bogi anything. It won't flatter you.")
+                        Text("Ask Togi anything. It won't flatter you.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -42,7 +42,7 @@ struct CoachView: View {
                     if sending {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Bogi is thinking…")
+                            Text("Togi is thinking…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -71,7 +71,7 @@ struct CoachView: View {
             }
 
             HStack(spacing: 8) {
-                TextField("Talk to Bogi…", text: $input, axis: .vertical)
+                TextField("Talk to Togi…", text: $input, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...4)
                     .onSubmit(submit)
@@ -123,7 +123,7 @@ struct CoachView: View {
                     messages.append((role: "coach", text: reply))
                 }
             } catch {
-                errorText = "Bogi couldn't answer: \(error.localizedDescription)"
+                errorText = "Togi couldn't answer: \(error.localizedDescription)"
             }
             sending = false
         }

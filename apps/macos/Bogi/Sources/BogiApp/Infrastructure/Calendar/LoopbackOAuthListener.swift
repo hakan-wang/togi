@@ -106,9 +106,9 @@ final class LoopbackOAuthListener {
 
     private func respond(on connection: NWConnection) {
         let body = """
-        <!doctype html><html><head><meta charset="utf-8"><title>Bogi</title></head>
+        <!doctype html><html><head><meta charset="utf-8"><title>Togi</title></head>
         <body style="font-family:-apple-system,system-ui;text-align:center;padding:3rem">
-        <h2>You're connected 🎉</h2><p>You can close this tab and return to Bogi.</p>
+        <h2>You're connected 🎉</h2><p>You can close this tab and return to Togi.</p>
         </body></html>
         """
         let bytes = Array(body.utf8)

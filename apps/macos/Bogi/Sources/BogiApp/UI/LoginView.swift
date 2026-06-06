@@ -16,13 +16,12 @@ struct LoginView: View {
     var body: some View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
-                Image(systemName: "fish.fill")
+                BogiAsset.mascot
                     .resizable().scaledToFit()
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(.tint)
-                Text("Sign in to Bogi")
+                    .frame(width: 56, height: 56)
+                Text("Sign in to Togi")
                     .font(.title2).bold()
-                Text("Bogi needs an active subscription.")
+                Text("Togi needs an active subscription.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

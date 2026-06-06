@@ -22,7 +22,7 @@ struct CompanionSettingsView: View {
                 section("Capture") {
                     Toggle("Pause capture", isOn: $appState.capturePaused)
                         .toggleStyle(.switch)
-                    Text("Bogi reads on-screen text every few seconds, on your Mac only.")
+                    Text("Togi reads on-screen text every few seconds, on your Mac only.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 

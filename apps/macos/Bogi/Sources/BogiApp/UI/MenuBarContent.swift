@@ -5,7 +5,7 @@ struct MenuBarContent: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        Button("Open Bogi") { appState.openDashboard?() }
+        Button("Open Togi") { appState.openDashboard?() }
 
         Button("Check in now") { appState.runJudgeNow?() }
 
@@ -21,7 +21,7 @@ struct MenuBarContent: View {
 
         Divider()
 
-        Button("Quit Bogi") {
+        Button("Quit Togi") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")

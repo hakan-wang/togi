@@ -26,8 +26,8 @@ struct MascotView: View {
                     .bob()
             }
             .buttonStyle(.plain)
-            .help("Open Bogi")
-            .accessibilityLabel("Bogi")
+            .help("Open Togi")
+            .accessibilityLabel("Togi")
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.bubbleText)
         .animation(.easeInOut(duration: 0.25), value: viewModel.escalationLevel)

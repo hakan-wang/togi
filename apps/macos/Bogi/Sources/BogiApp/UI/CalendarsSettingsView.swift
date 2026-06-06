@@ -42,7 +42,7 @@ struct GoogleCalendarRow: View {
                     Button("Disconnect", role: .destructive) { sync.disconnectGoogle() }
                 }
             } else {
-                Text("Connect Google Calendar so Bogi knows what you planned, and can hold you to it.")
+                Text("Connect Google Calendar so Togi knows what you planned, and can hold you to it.")
                     .font(.callout).foregroundStyle(.secondary)
                 Button(working ? "Connecting…" : "Connect Google Calendar") {
                     Task {
