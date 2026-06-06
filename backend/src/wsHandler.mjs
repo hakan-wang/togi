@@ -6,6 +6,14 @@ const REGION = process.env.BEDROCK_REGION || "eu-west-1";
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || "eu.anthropic.claude-sonnet-4-6";
 const bedrock = new BedrockRuntimeClient({ region: REGION });
 
+// Mirror handler.mjs: the auth bypass is honored ONLY in true local dev (no Supabase
+// configured). A stray AUTH_DISABLED=1 in a real deploy is ignored so the WS path can't
+// be opened the same way the HTTP one could.
+const AUTH_DISABLED = process.env.AUTH_DISABLED === "1" && !process.env.SUPABASE_URL;
+if (process.env.AUTH_DISABLED === "1" && process.env.SUPABASE_URL) {
+  console.error("AUTH_DISABLED=1 ignored: SUPABASE_URL is set; WS auth stays ENFORCED.");
+}
+
 // Pure: map one Bedrock ConverseStream event to a client frame (or null to skip).
 export function streamEventToFrame(ev) {
   if (ev.contentBlockDelta?.delta?.text != null) return { type: "delta", text: ev.contentBlockDelta.delta.text };
@@ -52,7 +60,7 @@ async function onInfer(event) {
 }
 
 async function authorize(token) {
-  if (process.env.AUTH_DISABLED === "1") return true;
+  if (AUTH_DISABLED) return true;
   if (!token || !process.env.SUPABASE_URL) return false;
   const r = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
     headers: { Authorization: `Bearer ${token}`, apikey: process.env.SUPABASE_ANON_KEY || "" },

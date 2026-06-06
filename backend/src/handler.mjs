@@ -19,7 +19,20 @@ const CHECKOUT_CANCEL_URL = process.env.CHECKOUT_CANCEL_URL || "https://heytogi.
 const BILLING_RETURN_URL = process.env.BILLING_RETURN_URL || "https://heytogi.com";
 // Free tier: this many AI calls per user per UTC day before the paywall. One-line knob.
 const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || "5");
-const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
+
+// The auth bypass is honored ONLY in genuine local dev — i.e. when no Supabase project is
+// configured. If AUTH_DISABLED=1 ever slips into a real deploy (SUPABASE_URL set), we ignore
+// it and keep auth ENFORCED, so a single stray env var can't make the paid endpoint public.
+// Exported pure for tests.
+export function authBypassEnabled(env) {
+  return env.AUTH_DISABLED === "1" && !env.SUPABASE_URL;
+}
+const AUTH_DISABLED = authBypassEnabled(process.env);
+if (process.env.AUTH_DISABLED === "1" && process.env.SUPABASE_URL) {
+  console.error(
+    "AUTH_DISABLED=1 ignored: SUPABASE_URL is set (treated as a real deploy); auth stays ENFORCED."
+  );
+}
 
 const bedrock = new BedrockRuntimeClient({ region: REGION });
 
@@ -27,7 +40,7 @@ export const handler = async (event) => {
   const method = event?.requestContext?.http?.method || "GET";
   const path = event?.rawPath || "/";
   try {
-    if (method === "GET" && path === "/healthz") return await healthz();
+    if (method === "GET" && path === "/healthz") return await healthz(event);
     if (method === "POST" && path === "/v1/infer") return await infer(event);
     if (method === "GET" && path === "/v1/account/status") return await accountStatus(event);
     if (method === "POST" && path === "/v1/stripe/checkout") return await stripeCheckout(event);
@@ -55,13 +68,31 @@ export function buildInferResponse(parsed) {
   return { text: parsed.text, content: parsed.content, stopReason: parsed.stopReason, usage: parsed.usage };
 }
 
-async function healthz() {
+// Static liveness body. authDisabled is surfaced so a wide-open (dev) deploy is obvious
+// from a health check. Exported pure for tests.
+export function buildHealthz({ authDisabled }) {
+  return { ok: true, model: MODEL_ID, region: REGION, authDisabled };
+}
+
+// True when the caller asked for the deep (Bedrock-pinging) probe via ?deep=1.
+function wantsDeepProbe(event) {
+  if (event?.queryStringParameters?.deep === "1") return true;
+  return (event?.rawQueryString || "").split("&").includes("deep=1");
+}
+
+async function healthz(event) {
+  const base = buildHealthz({ authDisabled: AUTH_DISABLED });
+  // The Bedrock connectivity ping costs money, so it is NOT run for the default health
+  // check — that path is public (Function URL auth NONE) and would otherwise let anyone
+  // run up the Bedrock bill. Opt into it with ?deep=1, and only when authenticated.
+  if (!wantsDeepProbe(event)) return json(200, base);
+  const user = await authUser(event);
+  if (!user) return json(401, { error: "unauthorized" });
   const { text } = await callBedrock({
     messages: [{ role: "user", content: "Reply with exactly: bogi-bedrock-ok" }],
     maxTokens: 20,
   });
-  // authDisabled is surfaced so a wide-open (dev) deploy is obvious from a health check.
-  return json(200, { ok: true, model: MODEL_ID, region: REGION, bedrock: text.trim(), authDisabled: AUTH_DISABLED });
+  return json(200, { ...base, bedrock: text.trim() });
 }
 
 // --- /v1/infer (auth + paid-or-free-quota gated) ---

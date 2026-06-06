@@ -4,7 +4,8 @@ Stateless proxy. Holds the Bedrock-invoking IAM role, the Supabase service key, 
 Stripe secret. **Stores no user data** — the memory bank lives on the Mac.
 
 ## Endpoints
-- `GET  /healthz` — Bedrock connectivity ping (no auth).
+- `GET  /healthz` — static liveness check (no auth, no Bedrock call). Add `?deep=1` for a
+  Bedrock connectivity ping — that variant requires a valid Supabase token.
 - `POST /v1/infer` — `{system?, messages:[{role,content}], maxTokens}` → `{text, usage}`.
   Auth: `X-Bogi-Authorization: Bearer <supabase access token>` (paid users only).
 - `GET  /v1/account/status` — `{paid, plan}` for the authed user.
