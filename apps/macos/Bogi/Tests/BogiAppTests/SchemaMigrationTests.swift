@@ -9,7 +9,8 @@ final class SchemaMigrationTests: XCTestCase {
         let expected = [
             "planned_blocks", "activity_observations", "activity_segments", "nudges",
             "daily_summaries", "weekly_summaries", "monthly_summaries",
-            "goals", "categories", "calendar_accounts", "settings", "account"
+            "goals", "categories", "calendar_accounts", "settings", "account",
+            "north_star"
         ]
 
         try db.dbQueue.read { conn in

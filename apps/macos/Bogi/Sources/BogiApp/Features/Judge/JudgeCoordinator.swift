@@ -8,6 +8,7 @@ final class JudgeCoordinator {
     private let judge: JudgeService
     private let observations: ObservationStore
     private let blocks: PlannedBlockRepository
+    private let northStar: NorthStarService
     private let presenter: NudgePresenter
     private let interval: TimeInterval
     private let onResult: (NudgeDecision, _ onTask: Bool) -> Void
@@ -16,12 +17,14 @@ final class JudgeCoordinator {
     init(judge: JudgeService,
          observations: ObservationStore,
          blocks: PlannedBlockRepository,
+         northStar: NorthStarService,
          presenter: NudgePresenter,
          interval: TimeInterval = 300,
          onResult: @escaping (NudgeDecision, Bool) -> Void) {
         self.judge = judge
         self.observations = observations
         self.blocks = blocks
+        self.northStar = northStar
         self.presenter = presenter
         self.interval = interval
         self.onResult = onResult
@@ -53,7 +56,8 @@ final class JudgeCoordinator {
         let input = JudgeInput(
             activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: 0
+            recentOffTaskMinutes: 0,
+            northStar: northStar.current()?.text
         )
 
         guard let nudge = try? await judge.runOnce(input: input) else { return }

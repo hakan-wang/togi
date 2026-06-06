@@ -193,11 +193,15 @@ final class InsightsTests: XCTestCase {
         let search = SearchService(database: db, index: VectorIndex(database: db), embedder: embedder)
         let mock = MockInferenceClient(response: "You spent your hour on work. Keep it up isn't my style — just don't slip.")
 
+        let northStar = NorthStarService(database: db)
+        northStar.save(text: "Become a full-time creator", why: nil)
+
         let coach = CoachService(
             inference: mock,
             insights: insights,
             search: search,
             goals: goalsService,
+            northStar: northStar,
             database: db,
             clock: { now }
         )
@@ -210,6 +214,7 @@ final class InsightsTests: XCTestCase {
         let userMsg = mock.lastMessages.first?.content ?? ""
         XCTAssertTrue(userMsg.contains("work"), "grounded context should include the category")
         XCTAssertTrue(userMsg.contains("Finish the report"), "grounded context should include the goal")
+        XCTAssertTrue(userMsg.contains("Become a full-time creator"), "grounded context should include the North Star")
     }
 }
 

@@ -6,13 +6,15 @@ struct JudgeInput {
     var activeBlock: (title: String, category: String?, startAt: Date, endAt: Date)?
     var observations: [(t: Date, app: String?, window: String?, text: String?)]
     var recentOffTaskMinutes: Int
+    /// The user's single overarching life goal, injected so the judge can weigh drift against it.
+    var northStar: String? = nil
 }
 
 /// Builds the system + user prompt for the activity judge. Pure string construction so the
 /// shape of what we send the LLM is unit-testable.
 enum JudgePrompt {
     static let system = """
-    You are Bogi's activity judge. You receive ~5 minutes of a user's on-screen activity \
+    You are Togi's activity judge. You receive ~5 minutes of a user's on-screen activity \
     and the calendar block they planned. Return STRICT JSON only. \
     1) Segment activity into time segments each labeled category, sub_category, sub_sub \
     (short concrete description) with minutes. \
@@ -20,7 +22,8 @@ enum JudgePrompt {
     3) Decide a nudge only if sustainedly off-task vs plan; if on-task or no plan, \
     should=false. When you do nudge, write the message in a kind, supportive voice: \
     be specific and honest about the drift, but gentle and encouraging, never harsh or \
-    preachy, and frame it as a small nudge back toward the plan. \
+    preachy, and frame it as a small nudge back toward the plan. If a north_star is \
+    provided, connect the drift to the bigger goal the user said they care about. \
     Never use em-dashes in the message; use commas, periods, or parentheses instead.
     """
 
@@ -57,6 +60,10 @@ enum JudgePrompt {
         }
 
         root["recent_off_task_minutes"] = input.recentOffTaskMinutes
+
+        if let northStar = input.northStar, !northStar.isEmpty {
+            root["north_star"] = northStar
+        }
 
         root["observations"] = input.observations.map { obs -> [String: Any] in
             var o: [String: Any] = ["t": iso.string(from: obs.t)]

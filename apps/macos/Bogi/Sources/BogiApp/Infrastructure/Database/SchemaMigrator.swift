@@ -133,6 +133,24 @@ enum SchemaMigrator {
             }
         }
 
+        // Phase: North Star — the user's single apex life-goal, stated in onboarding. Sits ABOVE
+        // `goals`. UNLIKE the rest of the data bank (strictly local), this row SYNCS to Supabase:
+        // it holds only user-stated goal text, never captured screen data. Singleton per device —
+        // the service always upserts the fixed id "primary".
+        migrator.registerMigration("v3_north_star") { db in
+            try db.create(table: "north_star") { t in
+                t.column("id", .text).primaryKey()                 // always "primary"
+                t.column("text", .text).notNull()
+                t.column("why", .text)
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+                // Sync bookkeeping — local-only columns, never sent in the request body.
+                t.column("remote_id", .text)
+                t.column("dirty", .boolean).notNull().defaults(to: true)
+                t.column("synced_at", .datetime)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

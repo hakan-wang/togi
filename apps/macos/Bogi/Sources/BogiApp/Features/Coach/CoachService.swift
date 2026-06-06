@@ -9,6 +9,7 @@ final class CoachService {
     private let insights: InsightsService
     private let search: SearchService
     private let goals: GoalsService
+    private let northStar: NorthStarService
     private let database: DatabaseService
     private let clock: () -> Date
 
@@ -16,25 +17,29 @@ final class CoachService {
          insights: InsightsService,
          search: SearchService,
          goals: GoalsService,
+         northStar: NorthStarService,
          database: DatabaseService,
          clock: @escaping () -> Date = { Date() }) {
         self.inference = inference
         self.insights = insights
         self.search = search
         self.goals = goals
+        self.northStar = northStar
         self.database = database
         self.clock = clock
     }
 
     /// The persona. Warm and supportive, but honest and grounded. Never speaks as the user.
     static let systemPrompt = """
-    You are Bogi, a warm and supportive accountability coach.
+    You are Togi, a warm and supportive accountability coach.
 
     Rules:
     - Speak directly TO the user (use "you"). Never write as if you were the user.
     - Be kind and encouraging. Acknowledge effort and progress before pointing out gaps. \
     Stay honest: surface gaps between plans and reality clearly, but frame them gently as \
     next steps, never as failures, and never harshly.
+    - If a NORTH STAR is given, weigh everything against it above any individual goal, and tie \
+    your feedback back to whether the day moved them toward it.
     - Ground every claim strictly in the DATA provided below. Do not invent numbers, \
     activities, or goals.
     - If the data does not contain what is needed to answer, say "I don't have data on that yet." \
@@ -48,9 +53,10 @@ final class CoachService {
         let now = clock()
         let insight = insights.insight(for: .day, containing: now)
         let activeGoals = goals.all()
+        let star = northStar.current()
         let snippets = retrieveSnippets(for: question)
 
-        let context = Self.buildContext(insight: insight, goals: activeGoals, snippets: snippets)
+        let context = Self.buildContext(northStar: star, insight: insight, goals: activeGoals, snippets: snippets)
 
         let messages = [
             InferenceMessage(role: "user", content: "DATA:\n\(context)\n\nQUESTION:\n\(question)")
@@ -79,10 +85,21 @@ final class CoachService {
     // MARK: - Pure context builder
 
     /// Build the compact, grounded text context fed to the model. Pure — no network or db.
-    static func buildContext(insight: PeriodInsight,
+    static func buildContext(northStar: NorthStarRecord? = nil,
+                             insight: PeriodInsight,
                              goals: [GoalRecord],
                              snippets: [String]) -> String {
         var lines: [String] = []
+
+        if let northStar {
+            lines.append("NORTH STAR (the user's single overarching life goal):")
+            if let why = northStar.why, !why.isEmpty {
+                lines.append("- \(northStar.text), why: \(why)")
+            } else {
+                lines.append("- \(northStar.text)")
+            }
+            lines.append("")
+        }
 
         lines.append("TODAY (\(insight.label)):")
         lines.append("- Total tracked: \(Self.fmt(insight.totalMinutes)) min")

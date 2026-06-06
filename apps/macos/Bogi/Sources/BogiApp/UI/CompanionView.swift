@@ -33,7 +33,7 @@ struct CompanionView: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Text("bogi")
+            Text("togi")
                 .font(.system(.title3, design: .serif))
                 .foregroundStyle(BogiColor.ink)
             Spacer()
