@@ -44,4 +44,10 @@ final class AccountGateTests: XCTestCase {
         let out = await g.check()
         XCTAssertEqual(out, .unreachable)
     }
+
+    func testUnreachableOnNonHTTPResponse() async {
+        let g = gate(token: "t") { _ in (Data(), URLResponse()) }
+        let out = await g.check()
+        XCTAssertEqual(out, .unreachable)
+    }
 }

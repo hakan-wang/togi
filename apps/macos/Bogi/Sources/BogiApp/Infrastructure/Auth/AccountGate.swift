@@ -15,6 +15,7 @@ enum GateOutcome: Equatable {
 final class AccountGate {
     typealias Transport = (URLRequest) async throws -> (Data, URLResponse)
 
+    // Mirrors GET /v1/account/status. Server field is "paid".
     struct Status: Decodable { let paid: Bool; let plan: String? }
 
     private let baseURL: URL
