@@ -60,6 +60,13 @@ final class PlannedBlockRepository {
         }) ?? 0
     }
 
+    /// Fetch a single block by primary key.
+    func block(id: String) -> PlannedBlock? {
+        try? database.dbQueue.read { db in
+            try PlannedBlock.fetchOne(db, key: id)
+        } ?? nil
+    }
+
     /// Fetch a single block by its (source, external_event_id) pair. Used during reconciliation.
     func block(source: String, externalEventId: String) -> PlannedBlock? {
         try? database.dbQueue.read { db in

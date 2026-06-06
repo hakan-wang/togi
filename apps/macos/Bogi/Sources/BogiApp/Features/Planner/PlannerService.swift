@@ -8,6 +8,19 @@ struct ExternalCalendarEvent {
     let title: String
     let start: Date
     let end: Date
+    /// The calendar the event lives in (Google calendarId, e.g. "primary"). nil for Apple events.
+    var calendarId: String? = nil
+}
+
+/// Writes Bogi-created blocks out to an external calendar (Google). Implemented by an adapter over
+/// `GoogleCalendarService`; injected so the planner stays decoupled from networking and is testable.
+/// All methods no-op/return nil when the provider isn't connected, leaving the block local-only.
+protocol PlannedBlockCalendarWriter {
+    /// Create the matching event upstream. Returns the new (calendarId, externalEventId), or nil
+    /// on failure / not-connected.
+    func createEvent(for block: PlannedBlock) async -> (calendarId: String, externalEventId: String)?
+    /// Push a changed block to its existing upstream event. Returns true on success.
+    func updateEvent(for block: PlannedBlock) async -> Bool
 }
 
 /// Orchestrates planned blocks: local block creation and reconciliation of external calendars.
@@ -24,6 +37,9 @@ final class PlannerService {
 
     private let repository: PlannedBlockRepository
     private let sidecar: SidecarClient?
+    /// Optional sink that mirrors Bogi-created blocks into Google Calendar (two-way sync). When nil
+    /// or not connected, blocks stay local-only.
+    var calendarWriter: PlannedBlockCalendarWriter?
 
     init(repository: PlannedBlockRepository, sidecar: SidecarClient? = nil) {
         self.repository = repository
@@ -52,6 +68,7 @@ final class PlannerService {
         block.endAt = end
         block.updatedAt = Date()
         repository.upsert(block)
+        pushUpdateIfNeeded(block)
         return block
     }
 
@@ -72,7 +89,44 @@ final class PlannerService {
             updatedAt: Date()
         )
         repository.upsert(block)
+        pushCreateIfNeeded(block)
         return block
+    }
+
+    // MARK: - Two-way push (Bogi-created blocks → Google)
+
+    /// Mirror a freshly Bogi-created block into Google, then record the returned ids locally so the
+    /// next sync matches it (instead of duplicating) and future moves can update the right event.
+    /// Fire-and-forget: failure (incl. not-connected) leaves the block local-only.
+    private func pushCreateIfNeeded(_ block: PlannedBlock) {
+        guard let writer = calendarWriter, block.createdByBogi, block.source == "local" else { return }
+        Task { [repository] in
+            guard let ids = await writer.createEvent(for: block) else { return }
+            // A sync could have imported this Google event already (narrow race). If so, keep that
+            // row (marking it Bogi-owned) and drop our local placeholder instead of duplicating.
+            if let dup = repository.block(source: "google", externalEventId: ids.externalEventId),
+               dup.id != block.id {
+                var merged = dup
+                merged.createdByBogi = true
+                repository.upsert(merged)
+                repository.delete(id: block.id)
+                return
+            }
+            // Re-read in case the block changed meanwhile; only stamp the upstream ids.
+            var stored = repository.block(id: block.id) ?? block
+            stored.source = "google"
+            stored.calendarId = ids.calendarId
+            stored.externalEventId = ids.externalEventId
+            stored.updatedAt = Date()
+            repository.upsert(stored)
+        }
+    }
+
+    /// Push a moved/edited block to its existing Google event, if it is a Bogi-created google block.
+    private func pushUpdateIfNeeded(_ block: PlannedBlock) {
+        guard let writer = calendarWriter, block.createdByBogi,
+              block.source == "google", block.externalEventId != nil else { return }
+        Task { _ = await writer.updateEvent(for: block) }
     }
 
     /// Reconcile a fresh batch of external events for one or more sources into planned_blocks.
@@ -93,11 +147,13 @@ final class PlannerService {
                 let changed = existing.title != event.title
                     || existing.startAt != event.start
                     || existing.endAt != event.end
+                    || existing.calendarId != event.calendarId
                     || existing.status == Self.statusOrphaned   // re-appeared upstream
                 if changed {
                     existing.title = event.title
                     existing.startAt = event.start
                     existing.endAt = event.end
+                    existing.calendarId = event.calendarId ?? existing.calendarId
                     if existing.status == Self.statusOrphaned {
                         existing.status = Self.statusPlanned
                     }
@@ -116,7 +172,8 @@ final class PlannerService {
                     goalId: nil,
                     status: Self.statusPlanned,
                     createdByBogi: false,
-                    updatedAt: now
+                    updatedAt: now,
+                    calendarId: event.calendarId
                 )
                 repository.upsert(block)
             }

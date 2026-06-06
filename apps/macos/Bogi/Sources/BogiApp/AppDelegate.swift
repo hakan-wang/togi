@@ -125,6 +125,11 @@ final class AppState: ObservableObject {
         self.sidecar = sidecar
 
         self.planner = PlannerService(repository: plannedBlocks, sidecar: sidecar)
+        // Mirror Bogi-created blocks into Google Calendar (two-way sync). No-ops until connected.
+        self.planner.calendarWriter = GoogleCalendarWriter(
+            service: self.googleCalendar,
+            clientId: GoogleConfig.clientID,
+            clientSecret: GoogleConfig.clientSecret)
         self.coach = CoachService(backend: sidecar, threadId: "coach")
 
         let paused = settings.bool("paused", default: false)

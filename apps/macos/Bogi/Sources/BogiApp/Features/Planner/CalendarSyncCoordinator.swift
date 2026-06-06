@@ -1,6 +1,39 @@
 import Foundation
 import AppKit
 
+/// Adapts `GoogleCalendarService` to the planner's `PlannedBlockCalendarWriter` so Bogi-created
+/// blocks are mirrored to the user's Google primary calendar. All calls fail soft (return nil/false)
+/// when Google isn't connected, leaving the block local-only.
+struct GoogleCalendarWriter: PlannedBlockCalendarWriter {
+    let service: GoogleCalendarService
+    let clientId: String
+    let clientSecret: String
+
+    func createEvent(for block: PlannedBlock) async -> (calendarId: String, externalEventId: String)? {
+        do {
+            let eventId = try await service.createEvent(
+                title: block.title, start: block.startAt, end: block.endAt,
+                clientId: clientId, clientSecret: clientSecret)
+            return (GoogleCalendarService.writeCalendarId, eventId)
+        } catch {
+            return nil
+        }
+    }
+
+    func updateEvent(for block: PlannedBlock) async -> Bool {
+        guard let calendarId = block.calendarId, let eventId = block.externalEventId else { return false }
+        do {
+            try await service.updateEvent(
+                calendarId: calendarId, eventId: eventId,
+                title: block.title, start: block.startAt, end: block.endAt,
+                clientId: clientId, clientSecret: clientSecret)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
 /// Connects Google Calendar and periodically reconciles events into `planned_blocks` so the
 /// judge has real intent to compare reality against. Google only (Apple deferred). Calendar
 /// data flows Mac → Google directly; tokens stay in the Keychain.

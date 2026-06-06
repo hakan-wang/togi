@@ -27,6 +27,9 @@ final class LoopbackOAuthListener {
     private let queue = DispatchQueue(label: "sh.bogi.oauth.loopback")
     private var continuation: CheckedContinuation<URL, Error>?
     private var didResume = false
+    /// Result captured before `waitForCallback()` registered its continuation. Without this, a
+    /// redirect that arrives faster than the awaiting task would be lost and the flow would hang.
+    private var pendingResult: Result<URL, Error>?
 
     /// The port the OS assigned once the listener is ready.
     private(set) var port: UInt16 = 0
@@ -70,11 +73,24 @@ final class LoopbackOAuthListener {
 
     /// Await the redirect. Returns the full callback URL (`http://127.0.0.1:<port><target>`).
     func waitForCallback() async throws -> URL {
-        try await withCheckedThrowingContinuation { cont in
-            queue.async { [weak self] in
-                guard let self else { cont.resume(throwing: ListenerError.cancelled); return }
-                self.continuation = cont
+        // Cancellation (e.g. an auth timeout racing this) must wake the continuation, otherwise a
+        // structured parent awaiting both would deadlock. onCancel tears the listener down, which
+        // resumes us via finish().
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
+                queue.async { [weak self] in
+                    guard let self else { cont.resume(throwing: ListenerError.cancelled); return }
+                    // If the redirect already arrived, resolve immediately; otherwise wait for it.
+                    if let pending = self.pendingResult {
+                        self.pendingResult = nil
+                        cont.resume(with: pending)
+                    } else {
+                        self.continuation = cont
+                    }
+                }
             }
+        } onCancel: {
+            cancel()
         }
     }
 
@@ -121,12 +137,13 @@ final class LoopbackOAuthListener {
     private func finish(with result: Result<URL, Error>) {
         guard !didResume else { return }
         didResume = true
-        let cont = continuation
-        continuation = nil
         listener.cancel()
-        switch result {
-        case .success(let url): cont?.resume(returning: url)
-        case .failure(let error): cont?.resume(throwing: error)
+        if let cont = continuation {
+            continuation = nil
+            cont.resume(with: result)
+        } else {
+            // No one is awaiting yet — stash it for the next waitForCallback().
+            pendingResult = result
         }
     }
 

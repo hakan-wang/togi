@@ -119,3 +119,25 @@ Console.)
   preserved, malformed input returns `nil`.
 - Keep existing PKCE generation behavior covered.
 - Full browser round-trip is validated manually (can't be unit-tested without a real browser).
+
+## Addendum (2026-06-06b) — two-way sync + all calendars + hardening
+
+The integration was upgraded beyond the original read-only/primary-only scope:
+
+- **Scopes** widened from `calendar.events.readonly` to `calendar.events` +
+  `calendar.calendarlist.readonly` (read **and** write events; list all calendars). These are
+  **sensitive** scopes → the OAuth client now needs Google app verification before public release
+  (until then users see the "unverified app" screen and there is a 100-user cap).
+- **Read all calendars:** `fetchEvents` lists the user's calendars (`users/me/calendarList`) and
+  pages through each calendar's events (`nextPageToken`, `maxResults=2500`), tagging each event
+  with its `calendarId`. Cancelled instances are skipped.
+- **Write-back (two-way):** Bogi-created blocks are mirrored to the user's `primary` calendar via
+  `createEvent`; moves are pushed via `updateEvent` (PATCH). The planner gains an injectable
+  `PlannedBlockCalendarWriter` (`GoogleCalendarWriter` adapter); pushes are fire-and-forget and
+  no-op when Google isn't connected. `planned_blocks` gains a `calendar_id` column (migration
+  `v4_planned_block_calendar_id`) so mirrored events can be updated and matched on re-sync.
+- **Auth hardening:** `authorize` now races the loopback redirect against a 5-min timeout (no more
+  stuck "Connecting…"); `LoopbackOAuthListener` is cancellation-aware and resolves a redirect that
+  arrives before the awaiter registered (race fix).
+- Token refresh is centralized in `withFreshToken` (one 401 → refresh → retry) and reused by every
+  API call.

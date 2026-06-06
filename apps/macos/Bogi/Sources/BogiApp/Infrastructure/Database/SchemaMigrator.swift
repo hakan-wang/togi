@@ -142,6 +142,14 @@ enum SchemaMigrator {
             }
         }
 
+        // Two-way Google sync — remember which Google calendar a block lives in so Bogi-created
+        // blocks can be updated (and matched on re-sync) on the right calendar.
+        migrator.registerMigration("v4_planned_block_calendar_id") { db in
+            try db.alter(table: "planned_blocks") { t in
+                t.add(column: "calendar_id", .text)
+            }
+        }
+
                 try migrator.migrate(dbQueue)
     }
 }
