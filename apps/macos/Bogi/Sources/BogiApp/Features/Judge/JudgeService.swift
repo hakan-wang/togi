@@ -11,13 +11,9 @@ protocol SegmentEmbedder: AnyObject {
     func embed(segmentId: String, text: String) async throws
 }
 
-/// Receives nudges the judge decides to fire, for the mascot to present.
-///
-/// Defined here so the judge does not depend on the mascot session's concrete
-/// `NudgePresenter`. The mascot conforms to this; the judge only knows the seam.
-protocol NudgeSink: AnyObject {
-    func present(_ nudge: Nudge)
-}
+// `NudgeSink` (the seam the judge hands fired nudges to) is declared in the
+// Mascot module (`Features/Mascot/NudgePresenter.swift`) and conformed to by
+// `NudgePresenter`. The judge depends only on that protocol, not the concrete type.
 
 /// Outcome of a single judge tick — surfaced so callers and tests can reason
 /// about what the heartbeat did without inspecting the database.
@@ -33,7 +29,7 @@ enum JudgeTickOutcome: Equatable {
 /// `tick()` holds the whole cycle (gather → infer → parse → persist → embed →
 /// nudge) and is the unit-testable entry point. `start()`/`stop()` drive it on a
 /// repeating timer in production. The DB-free decision logic lives in
-/// `NudgePolicy`; the prompt and parsing live in `JudgePrompt`/`JudgeResponseParser`.
+/// `JudgeNudgePolicy`; the prompt and parsing live in `JudgePrompt`/`JudgeResponseParser`.
 final class JudgeService {
     /// How often the heartbeat fires.
     static let interval: TimeInterval = 5 * 60
@@ -48,7 +44,7 @@ final class JudgeService {
     private weak var embedder: SegmentEmbedder?
     private weak var nudgeSink: NudgeSink?
     private let now: () -> Date
-    private let policy: NudgePolicy
+    private let policy: JudgeNudgePolicy
 
     /// In-memory nudge state. `lastNudgeAt` debounces; `snoozedUntil` honors a
     /// user/mascot snooze. DND is read from settings per tick.
@@ -64,7 +60,7 @@ final class JudgeService {
         settings: SettingsStore,
         embedder: SegmentEmbedder? = nil,
         nudgeSink: NudgeSink? = nil,
-        policy: NudgePolicy = NudgePolicy(),
+        policy: JudgeNudgePolicy = JudgeNudgePolicy(),
         now: @escaping () -> Date = Date.init
     ) {
         self.database = database
@@ -274,7 +270,7 @@ final class JudgeService {
 /// Pure, DB-free nudge gating: enforces do-not-disturb, an active snooze, and a
 /// debounce interval so nudges fire on sustained mismatch, not every tick (the
 /// PDF's "don't bury them in notifications" guardrail).
-struct NudgePolicy: Equatable {
+struct JudgeNudgePolicy: Equatable {
     /// Minimum spacing between fired nudges.
     var minInterval: TimeInterval = 10 * 60
 

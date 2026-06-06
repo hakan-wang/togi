@@ -279,7 +279,7 @@ final class JudgeTests: XCTestCase {
     // MARK: Nudge debounce / snooze / DND
 
     func testNudgePolicyDebounce() {
-        let policy = NudgePolicy(minInterval: 600)
+        let policy = JudgeNudgePolicy(minInterval: 600)
         let now = Date(timeIntervalSince1970: 1_000_000)
         // No prior nudge → allowed.
         XCTAssertTrue(policy.shouldEmit(now: now, lastNudgeAt: nil, snoozedUntil: nil, dndUntil: nil))
@@ -292,7 +292,7 @@ final class JudgeTests: XCTestCase {
     }
 
     func testNudgePolicySnoozeAndDND() {
-        let policy = NudgePolicy(minInterval: 600)
+        let policy = JudgeNudgePolicy(minInterval: 600)
         let now = Date(timeIntervalSince1970: 1_000_000)
         // Active snooze suppresses.
         XCTAssertFalse(policy.shouldEmit(now: now, lastNudgeAt: nil,
@@ -317,7 +317,7 @@ final class JudgeTests: XCTestCase {
         let sink = MockNudgeSink()
         let service = JudgeService(
             database: db, inference: MockInferenceClient(responseText: cannedJSON),
-            settings: settings, nudgeSink: sink, policy: NudgePolicy(minInterval: 600), now: { now }
+            settings: settings, nudgeSink: sink, policy: JudgeNudgePolicy(minInterval: 600), now: { now }
         )
 
         let first = try await service.tick()
