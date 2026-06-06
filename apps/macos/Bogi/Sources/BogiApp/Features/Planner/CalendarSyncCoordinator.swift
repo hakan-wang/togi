@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import AuthenticationServices
 
 /// Connects Google Calendar and periodically reconciles events into `planned_blocks` so the
 /// judge has real intent to compare reality against. Google only (Apple deferred). Calendar
@@ -32,16 +31,13 @@ final class CalendarSyncCoordinator: ObservableObject {
         timer = t
     }
 
-    func connectGoogle(anchor: ASPresentationAnchor) async {
+    func connectGoogle() async {
         lastError = nil
-        // Bogi is a menu-bar (accessory) app; macOS won't let an accessory app present a
-        // web-auth sheet. Briefly promote to a regular foreground app for the auth flow.
-        let previousPolicy = NSApp.activationPolicy()
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        defer { NSApp.setActivationPolicy(previousPolicy) }
+        // The loopback OAuth flow opens the user's default browser, so the menu-bar (accessory)
+        // app doesn't need to present its own web-auth sheet. Bring Bogi forward afterwards.
         do {
-            try await google.authorize(clientId: GoogleConfig.clientID, presentationAnchor: anchor)
+            try await google.authorize(clientId: GoogleConfig.clientID, clientSecret: GoogleConfig.clientSecret)
+            NSApp.activate(ignoringOtherApps: true)
             googleConnected = true
             settings.setBool("google_connected", true)
             await syncNow()
@@ -64,7 +60,7 @@ final class CalendarSyncCoordinator: ObservableObject {
         let end = cal.date(byAdding: .day, value: syncWindowDays, to: start)
             ?? start.addingTimeInterval(Double(syncWindowDays) * 86_400)
         do {
-            let events = try await google.fetchEvents(start: start, end: end, clientId: GoogleConfig.clientID)
+            let events = try await google.fetchEvents(start: start, end: end, clientId: GoogleConfig.clientID, clientSecret: GoogleConfig.clientSecret)
             planner.reconcileExternal(events)
             lastSync = Date()
             lastError = nil

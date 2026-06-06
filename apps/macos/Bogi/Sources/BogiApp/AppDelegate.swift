@@ -81,7 +81,7 @@ final class AppState: ObservableObject {
         self.segments = SegmentStore(database: database)
         self.plannedBlocks = plannedBlocks
         self.eventKit = EventKitService()
-        self.googleCalendar = GoogleCalendarService(redirectScheme: GoogleConfig.redirectScheme)
+        self.googleCalendar = GoogleCalendarService()
         self.search = SearchService(
             database: database,
             index: VectorIndex(database: database),

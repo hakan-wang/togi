@@ -6,12 +6,18 @@ enum BackendConfig {
     static let baseURL = URL(string: "https://e7fsq18rqf.execute-api.eu-west-1.amazonaws.com")!
 }
 
-/// Google OAuth (installed-app / iOS client type, PKCE, no secret). Tokens live only in the
-/// macOS Keychain; calendar data goes straight to Google, never to the Bogi backend.
+/// Google OAuth installed-app flow (Desktop client type, PKCE). Google issues a client_secret for
+/// Desktop clients; per RFC 8252 it is NOT confidential for a public native client — it ships in
+/// the app and PKCE is the real security boundary. Tokens live only in the macOS Keychain; calendar
+/// data goes straight to Google, never to the Bogi backend.
+///
+/// This is a Google **Desktop** OAuth client. Authorization uses the supported 127.0.0.1 loopback
+/// redirect flow (see `LoopbackOAuthListener`); custom URI schemes are no longer accepted by Google.
+/// No redirect URI needs to be registered in the Console — Desktop clients accept any loopback port.
 enum GoogleConfig {
     static let clientID = "217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb.apps.googleusercontent.com"
-    /// Reversed-client-ID custom scheme Google requires for iOS-type OAuth clients.
-    static let redirectScheme = "com.googleusercontent.apps.217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb"
+    /// Desktop OAuth client secret (copy from the Google Cloud Console Desktop client). Non-confidential.
+    static let clientSecret = "REMOVED_GOOGLE_OAUTH_SECRET"
 }
 
 /// Supabase project (auth only — no user data). The anon key is public by design.

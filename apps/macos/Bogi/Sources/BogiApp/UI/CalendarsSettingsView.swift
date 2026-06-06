@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import AuthenticationServices
 
 /// Settings → Calendars. Google only for now: connect, sync, disconnect.
 struct CalendarsSettingsView: View {
@@ -48,8 +47,7 @@ struct GoogleCalendarRow: View {
                 Button(working ? "Connecting…" : "Connect Google Calendar") {
                     Task {
                         working = true
-                        let anchor: ASPresentationAnchor = NSApp.keyWindow ?? NSApp.windows.first ?? NSWindow()
-                        await sync.connectGoogle(anchor: anchor)
+                        await sync.connectGoogle()
                         working = false
                     }
                 }
