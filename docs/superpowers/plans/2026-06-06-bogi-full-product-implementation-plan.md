@@ -104,7 +104,8 @@ Goal: app logs in (paid only), and can make authorized inference calls through t
 
 - **Backend (Lambda + API Gateway, TypeScript):**
   - `POST /v1/infer` — verify Supabase JWT → check paid status → forward to **Bedrock Converse
-    API** (Claude Sonnet 4.6) → return completion. Stateless; logs nothing.
+    API** using the **`eu.anthropic.claude-sonnet-4-6` inference profile** (the raw model ID is
+    rejected for on-demand) → return completion. Stateless; logs nothing.
   - `POST /v1/stripe/webhook` — on `checkout.session.completed` / subscription events, mark the
     Supabase user `paid=true` (via Supabase admin API or a `profiles` row).
   - `GET /v1/account/status` — returns paid/plan for the authed user.
@@ -287,7 +288,8 @@ POST /v1/stripe/webhook → updates Supabase paid flag (signature-verified)
 ## Open implementation details (decide during build)
 
 - EmbeddingGemma CoreML conversion vs shipping `NLContextualEmbedding` first.
-- Lambda vs App Runner for the backend.
+- ~~Lambda vs App Runner for the backend.~~ **Resolved: Lambda** (App Runner unavailable in
+  `eu-north-1`).
 - "Learn my rhythm": how historical follow-through adjusts planning suggestions (pattern stats,
   no fine-tuning).
 - Voice: push-to-talk first; "Hey Bogi" wake word as a later refinement of the same `VoiceService`.

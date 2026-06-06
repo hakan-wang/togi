@@ -75,4 +75,31 @@ final class JudgeTests: XCTestCase {
         let json = JudgePrompt.userJSON(input)
         XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
     }
+
+    // MARK: - offTaskMinutes
+
+    func testOffTaskMinutesSumsOnlyInWindowOffTask() throws {
+        let db = try DatabaseService(inMemory: true)
+        let store = SegmentStore(database: db)
+        let now = Date(timeIntervalSince1970: 100_000)
+
+        func segment(id: String, startOffset: TimeInterval, minutes: Double, onTask: Bool) -> ActivitySegment {
+            let start = now.addingTimeInterval(startOffset)
+            return ActivitySegment(
+                id: id, startAt: start, endAt: start.addingTimeInterval(minutes * 60),
+                minutes: minutes, plannedBlockId: nil,
+                category: "Distraction", subCategory: nil, subSub: nil,
+                onTask: onTask, confidence: 0.9, judgedAt: now)
+        }
+
+        // In window, off-task → counted (2.5 + 3.5 = 6.0).
+        store.insert(segment(id: "a", startOffset: -600, minutes: 2.5, onTask: false))
+        store.insert(segment(id: "b", startOffset: -1800, minutes: 3.5, onTask: false))
+        // In window but on-task → excluded.
+        store.insert(segment(id: "c", startOffset: -300, minutes: 4.0, onTask: true))
+        // Off-task but older than the 60-min window → excluded.
+        store.insert(segment(id: "d", startOffset: -4000, minutes: 5.0, onTask: false))
+
+        XCTAssertEqual(store.offTaskMinutes(within: 3600, now: now), 6)
+    }
 }

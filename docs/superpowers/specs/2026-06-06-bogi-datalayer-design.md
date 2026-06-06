@@ -69,8 +69,8 @@ The moat            = the data bank — a year of real behavior nobody can fast-
 | 9 | Mascot | Always-floating; calm idle, escalating nudges; "Hey Bogi"; snooze/DND |
 | 10 | Categorization | Hierarchical: category → sub → sub-sub (description) |
 | 11 | Insights | Day / week / month / year views over the data bank |
-| 12 | Inference | AWS Bedrock, Claude Sonnet 4.6 |
-| 13 | Infra / sync | Local-only data; AWS backend (proxy + Stripe + Supabase check); no data store |
+| 12 | Inference | AWS Bedrock, Claude Sonnet 4.6 via the `eu.anthropic.claude-sonnet-4-6` inference profile (on-demand by raw model ID is unsupported) |
+| 13 | Infra / sync | Local-only data; AWS backend on Lambda (App Runner unavailable in eu-north-1) — proxy + Stripe + Supabase check; no data store |
 | 14 | Auth / payments | Supabase (free tier, auth only) / Stripe (website checkout) |
 | 15 | Account | Paid-account-first login; pay on website |
 | 16 | Codebase | Greenfield macOS target in this worktree; copy DB + AX snippets only |
@@ -209,16 +209,26 @@ Local SQLite (GRDB) is the only store of user data.
 ## Inference
 
 **AWS Bedrock — Claude Sonnet 4.6**, via the backend proxy (keys never ship in the client).
-Used by: the 5-min judge, the coach (on demand), and planner parsing. Confirm Bedrock
-zero-retention terms for the deployment region before publishing the privacy claim.
+Invoked through the **`eu.anthropic.claude-sonnet-4-6` cross-region inference profile** —
+invoking the raw model ID `anthropic.claude-sonnet-4-6` with on-demand throughput is **not
+supported** and returns a `ValidationException`. (`global.anthropic.claude-sonnet-4-6` is also
+available.) Validated live against the `er-fo-CLI` account in `eu-north-1`.
+Used by: the 5-min judge, the coach (on demand), and planner parsing.
+
+**Privacy caveat — the EU profile is cross-region.** The `eu.` profile may serve a request from
+any EU Bedrock region (Frankfurt / Ireland / Paris / Stockholm), not `eu-north-1` only. Before
+publishing the privacy claim, confirm Bedrock **zero-retention terms across all EU regions** in
+the profile — not just the deployment region — and decide whether "bounded slices may transit
+other EU regions" is acceptable for the user-facing copy.
 
 ## Infrastructure
 
 - **Data residency:** 100% local on the Mac. No sync, no cross-device, no cloud backup. Only an
   **auth/paid-status check** touches the cloud (Supabase).
 - **Backend (AWS, on Activate credits):** Bedrock proxy + Stripe webhooks + Supabase
-  paid-status check. **No user-data store.** Recommended compute: Lambda (scales to zero) or
-  App Runner.
+  paid-status check. **No user-data store.** Compute: **Lambda** (scales to zero). App Runner was
+  considered but is **not available in `eu-north-1`**, so Lambda is the choice (and the better fit
+  for a pure proxy anyway).
 - **Auth:** Supabase free tier — accounts only, not data. **Payments:** Stripe — checkout on the
   website.
 - **Cost:** Bedrock + backend on AWS Activate credits; capture/storage/search/embeddings $0
@@ -257,10 +267,10 @@ Vector search:   sqlite-vec (SQLiteVec Swift bindings)
 Embeddings:      EmbeddingGemma-300M (CoreML) | fallback NLContextualEmbedding
 Calendar:        EventKit (Apple) + Google Calendar API (client-side PKCE, Keychain tokens)
 Voice:           AVAudioEngine push-to-talk + transcription ("Hey Bogi")
-Inference:       AWS Bedrock — Claude Sonnet 4.6 (via backend proxy)
+Inference:       AWS Bedrock — Claude Sonnet 4.6 via eu.anthropic.claude-sonnet-4-6 profile (backend proxy)
 Hotkey:          KeyboardShortcuts
 Secrets:         macOS Keychain
-Backend:         AWS (Lambda/App Runner) — proxy + Stripe webhooks + Supabase check
+Backend:         AWS Lambda — proxy + Stripe webhooks + Supabase check
 Auth:            Supabase (free tier)
 Payments:        Stripe (website checkout)
 ```
@@ -296,5 +306,7 @@ Supabase/Stripe paid-first billing, and DMG distribution — ships in the first 
   the wake-word vs push-to-talk choice is an implementation detail.
 - Exact schema for `planned_blocks`, `reality_logs` (categorized segments),
   `activity_observations`, summaries, and the 5-min judge prompt.
-- Backend compute choice (Lambda vs App Runner).
-- Confirm Bedrock zero-retention terms before marketing the privacy claim.
+- ~~Backend compute choice (Lambda vs App Runner).~~ **Resolved: Lambda** — App Runner is not
+  available in `eu-north-1`.
+- Confirm Bedrock zero-retention terms before marketing the privacy claim — **note the `eu.`
+  inference profile is cross-region**, so this must cover all EU regions, not just `eu-north-1`.

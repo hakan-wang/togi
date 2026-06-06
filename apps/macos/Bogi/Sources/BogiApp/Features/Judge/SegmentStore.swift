@@ -20,4 +20,16 @@ final class SegmentStore {
             try ActivitySegment.fetchCount(db)
         }) ?? 0
     }
+
+    /// Sum of off-task minutes from judged segments within the last `seconds`. Feeds nudge urgency.
+    func offTaskMinutes(within seconds: TimeInterval, now: Date = Date()) -> Int {
+        let cutoff = now.addingTimeInterval(-seconds)
+        let total = (try? database.dbQueue.read { db in
+            try ActivitySegment
+                .filter(Column("start_at") >= cutoff && Column("on_task") == false)
+                .fetchAll(db)
+                .reduce(0.0) { $0 + $1.minutes }
+        }) ?? 0
+        return Int(total.rounded())
+    }
 }

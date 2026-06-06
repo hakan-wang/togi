@@ -8,16 +8,21 @@ import Foundation
 final class JudgeCoordinator {
     private let observations: ObservationStore
     private let blocks: PlannedBlockRepository
+    private let segments: SegmentStore
     private let sidecar: SidecarClient
     private let interval: TimeInterval
+    /// Rolling window for the off-task minutes fed into nudge urgency (60 min).
+    private let offTaskWindow: TimeInterval = 3600
     private var timer: DispatchSourceTimer?
 
     init(observations: ObservationStore,
          blocks: PlannedBlockRepository,
+         segments: SegmentStore,
          sidecar: SidecarClient,
          interval: TimeInterval = 300) {
         self.observations = observations
         self.blocks = blocks
+        self.segments = segments
         self.sidecar = sidecar
         self.interval = interval
     }
@@ -49,7 +54,7 @@ final class JudgeCoordinator {
         let input = JudgeInput(
             activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: 0
+            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now)
         )
         let payload = JudgePrompt.userJSON(input)
         _ = try? await sidecar.judge(payload, threadId: "judge")
