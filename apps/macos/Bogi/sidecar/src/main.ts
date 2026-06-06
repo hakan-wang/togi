@@ -33,7 +33,9 @@ export async function runStdio(): Promise<void> {
       headers: { "content-type": "application/json", "X-Bogi-Authorization": `Bearer ${token}` },
       body: JSON.stringify(body),
     });
-    return (await r.json()) as any;
+    const raw = await r.text();
+    if (!r.ok) throw new Error(`backend ${r.status}: ${raw.slice(0, 300)}`);
+    return JSON.parse(raw) as any;
   };
   const { makeActionTools } = await import("./tools/actionTools.js");
   const pendingActions = new Map<string, (result: unknown) => void>();
