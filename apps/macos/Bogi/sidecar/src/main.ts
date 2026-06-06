@@ -35,10 +35,23 @@ export async function runStdio(): Promise<void> {
     });
     return (await r.json()) as any;
   };
-  const tools = makeReadTools(() => openReadOnly(dbPath));
+  const { makeActionTools } = await import("./tools/actionTools.js");
+  const pendingActions = new Map<string, (result: unknown) => void>();
+  let actionSeq = 0;
+  const callAction = (name: string, input: unknown) =>
+    new Promise((resolve) => {
+      const callId = `act-${++actionSeq}`;
+      pendingActions.set(callId, resolve);
+      process.stdout.write(JSON.stringify({ kind: "action_call", id: "agent", callId, name, input }) + "\n");
+    });
+
+  const tools = [...makeReadTools(() => openReadOnly(dbPath)), ...makeActionTools(callAction)];
   const agent = createBogiAgent({ tools, post });
   const dispatch = makeDispatcher({ agent, write: (l) => process.stdout.write(l) });
-  const decoder = new LineDecoder((m) => { void dispatch(m); });
+  const decoder = new LineDecoder((m) => {
+    if (m.kind === "action_result") { pendingActions.get((m as any).callId)?.((m as any).result); pendingActions.delete((m as any).callId); return; }
+    void dispatch(m);
+  });
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (c) => decoder.push(c as string));
   process.stdout.write(encodeMessage({ kind: "ready" }));
