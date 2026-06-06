@@ -17,6 +17,7 @@ test("buildCheckoutForm builds a single-price subscription form with user bindin
   assert.equal(form.client_reference_id, "11111111-1111-1111-1111-111111111111");
   assert.equal(form["subscription_data[metadata][supabase_user_id]"], "11111111-1111-1111-1111-111111111111");
   assert.equal(form.customer_email, "a@b.com");
+  assert.equal(form.success_url, "https://heytogi.com/ok?session_id={CHECKOUT_SESSION_ID}");
   assert.equal(form["line_items[1][price]"], undefined); // single price only
 });
 

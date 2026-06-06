@@ -72,6 +72,7 @@ export function buildCheckoutForm({ userId, email, stripeCustomerId, priceId, su
   return form;
 }
 
+// Shape the slimmed /v1/account/status body. Pure + exported for tests.
 export function buildAccountStatus({ paid, plan, userId }) {
   return { paid, plan, userId };
 }
@@ -307,10 +308,8 @@ async function writeProfile(target, fields) {
   return Array.isArray(rows) ? rows.length > 0 : true;
 }
 
-// Canonical plan name from the price id we configured, not the editable Stripe nickname.
-function planFromPrice(obj) {
-  const priceId = obj.items?.data?.[0]?.price?.id || obj.plan?.id || null;
-  if (priceId && priceId === STRIPE_PRICE_ID) return "pro";
+// Single plan today; the canonical plan name is always "pro".
+function planFromPrice() {
   return "pro";
 }
 
@@ -352,10 +351,6 @@ function verifyStripeSignature(payload, header, secret, toleranceSec = 300) {
 }
 
 // --- helpers ---
-
-function todayUTC() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 // Strict id shape checks so attacker-influenceable webhook fields can never reshape a query.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
