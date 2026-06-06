@@ -4,6 +4,7 @@ import UserNotifications
 /// The eight first-run beats, in order. Raw values drive the progress dots and navigation.
 enum OnboardingStep: Int, CaseIterable {
     case welcome
+    case consent
     case name
     case northStar
     case calendar
@@ -13,7 +14,8 @@ enum OnboardingStep: Int, CaseIterable {
     case magicMoment
 
     /// Steps the user may skip. The North Star is encouraged but never forced; Accessibility is
-    /// the one the product really needs, but we still never hard-trap the user on it.
+    /// the one the product really needs, but we still never hard-trap the user on it. Consent is
+    /// the one step that is never skippable — Togi may not read the screen without it.
     var isSkippable: Bool {
         switch self {
         case .calendar, .notifications, .rhythm, .northStar: return true

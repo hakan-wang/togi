@@ -57,6 +57,7 @@ struct OnboardingView: View {
     private var stepView: some View {
         switch coordinator.step {
         case .welcome: welcome
+        case .consent: consentStep
         case .name: nameStep
         case .northStar: northStarStep
         case .calendar: calendarStep
@@ -80,6 +81,50 @@ struct OnboardingView: View {
             }
             Spacer()
             primaryButton("let's go") { coordinator.advance() }
+        }
+    }
+
+    private var consentStep: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "hand.raised.fill")
+                .font(.system(size: 38))
+                .foregroundStyle(BogiColor.primary)
+            heading("Before we start, the honest version.",
+                    "I'm a coach, so I pay attention to your work. Here's exactly what that means, so you decide with your eyes open.")
+            VStack(alignment: .leading, spacing: 10) {
+                consentPoint("I read the text on your screen every few seconds to tell focused work from drifting. No screenshots, no recording, no keystroke logging.")
+                consentPoint("Everything stays on this Mac. Raw captures auto-delete after about two weeks.")
+                consentPoint("Password managers, password fields, private browser windows and banking sites are skipped automatically.")
+                consentPoint("Only small text slices ever leave your Mac, and only so the AI coach can help. I never sell your data.")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 4)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Toggle("", isOn: $coordinator.consentChecked)
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                Text(.init("I have read and agree to the [Togi privacy policy](https://heytogi.com/privacy)."))
+                    .font(.callout)
+                    .foregroundStyle(BogiColor.ink)
+                    .tint(BogiColor.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            primaryButton("agree and continue", enabled: coordinator.consentChecked) {
+                coordinator.acceptConsent()
+            }
+        }
+    }
+
+    private func consentPoint(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 5))
+                .foregroundStyle(BogiColor.primary)
+                .padding(.top, 7)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(BogiColor.muted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

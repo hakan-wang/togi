@@ -169,7 +169,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        if appState.settings.bool("onboarding_completed", default: false) {
+        // Only go straight to the capturing runtime if onboarding is done AND the user has accepted
+        // the current privacy policy. A policy-version bump re-gates everyone through onboarding.
+        let consented = PrivacyConsent.isAccepted(appState.settings)
+        if appState.settings.bool("onboarding_completed", default: false) && consented {
             startNormalRuntime()
         } else {
             presentOnboarding()
@@ -204,6 +207,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The normal menu-bar runtime: capture loop, floating mascot, and the 5-minute judge.
     private func startNormalRuntime() {
+        // Hard guarantee: Togi never reads the screen without a recorded acceptance of the current
+        // privacy policy. If we somehow reach here without it, re-present the consent gate instead
+        // of starting capture.
+        guard PrivacyConsent.isAccepted(appState.settings) else {
+            if onboardingWindow == nil { presentOnboarding() }
+            return
+        }
         if appState.capture.permissionState != .granted {
             appState.capture.requestPermission()
         }

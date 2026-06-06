@@ -13,6 +13,7 @@ final class OnboardingCoordinator: ObservableObject {
     @Published var rhythm: CheckInRhythm = .both
     @Published var calendarConnected = false
     @Published var accessibilityGranted: Bool
+    @Published var consentChecked: Bool
     @Published var busy = false
     @Published var errorText: String?
 
@@ -52,6 +53,7 @@ final class OnboardingCoordinator: ObservableObject {
         self.prefilledName = identity.name
         self.name = identity.name ?? ""
         self.accessibilityGranted = capture.permissionState == .granted
+        self.consentChecked = PrivacyConsent.isAccepted(settings)
     }
 
     // MARK: - Navigation
@@ -67,6 +69,14 @@ final class OnboardingCoordinator: ObservableObject {
     func skip() { advance() }
 
     // MARK: - Step actions
+
+    /// Record the user's acceptance of the current privacy policy, then move on. This is the gate
+    /// that `startNormalRuntime` checks before capture is ever allowed to start.
+    func acceptConsent() {
+        PrivacyConsent.accept(settings)
+        consentChecked = true
+        advance()
+    }
 
     func commitName() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
