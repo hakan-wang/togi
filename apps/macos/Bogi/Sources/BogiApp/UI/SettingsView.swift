@@ -1,8 +1,11 @@
 import SwiftUI
+import AppKit
 
-/// Settings shell with the tabs the spec calls for. Each tab is a placeholder in Phase 0
-/// and gets filled in by its owning phase.
+/// Settings shell with the tabs the spec calls for. The Account tab hosts the real login;
+/// the rest are placeholders filled in by their owning phase.
 struct SettingsView: View {
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
         TabView {
             PlaceholderTab(title: "Permissions", note: "Accessibility, Calendars, Microphone — Phase 1/4")
@@ -14,13 +17,16 @@ struct SettingsView: View {
             PlaceholderTab(title: "Calendars", note: "Apple (EventKit) + Google (PKCE) — Phase 4")
                 .tabItem { Label("Calendars", systemImage: "calendar") }
 
-            PlaceholderTab(title: "Account", note: "Supabase login + paid status — Phase 3")
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+            LoginView(
+                signIn: { email, password in try await appState.auth.signIn(email: email, password: password) },
+                openWebsite: { NSWorkspace.shared.open(URL(string: "https://bogi.sh/account")!) }
+            )
+            .tabItem { Label("Account", systemImage: "person.crop.circle") }
 
             PlaceholderTab(title: "About", note: "Version, updates — Phase 8")
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 480, height: 320)
+        .frame(width: 480, height: 360)
     }
 }
 

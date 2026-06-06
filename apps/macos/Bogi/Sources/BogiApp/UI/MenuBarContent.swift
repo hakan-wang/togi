@@ -5,10 +5,11 @@ struct MenuBarContent: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        Button("Open Dashboard") {}
-            .disabled(true) // Phase 7
+        Button("Open Dashboard") { appState.openDashboard?() }
 
-        Toggle("Pause Capture", isOn: $appState.capturePaused) // wired in Phase 1
+        Button("Check in now") { appState.runJudgeNow?() }
+
+        Toggle("Pause Capture", isOn: $appState.capturePaused)
 
         Divider()
 

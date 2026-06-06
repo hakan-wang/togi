@@ -20,4 +20,15 @@ final class ObservationStore {
             try ActivityObservation.fetchCount(db)
         }) ?? 0
     }
+
+    /// Observations captured within the last `seconds`, oldest first. Feeds the 5-min judge.
+    func recent(within seconds: TimeInterval, now: Date = Date()) -> [ActivityObservation] {
+        let cutoff = now.addingTimeInterval(-seconds)
+        return (try? database.dbQueue.read { db in
+            try ActivityObservation
+                .filter(Column("captured_at") >= cutoff)
+                .order(Column("captured_at"))
+                .fetchAll(db)
+        }) ?? []
+    }
 }
