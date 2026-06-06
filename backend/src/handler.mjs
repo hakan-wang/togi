@@ -12,8 +12,7 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
-const STRIPE_PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY || "";
-const STRIPE_PRICE_ANNUAL = process.env.STRIPE_PRICE_ANNUAL || "";
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || "";
 const CHECKOUT_SUCCESS_URL = process.env.CHECKOUT_SUCCESS_URL || "https://heytogi.com/upgrade-success";
 const CHECKOUT_CANCEL_URL = process.env.CHECKOUT_CANCEL_URL || "https://heytogi.com/upgrade-cancelled";
 const BILLING_RETURN_URL = process.env.BILLING_RETURN_URL || "https://heytogi.com";
@@ -53,6 +52,26 @@ async function callBedrock({ system, messages, tools, maxTokens = 1024, temperat
 // Shape the /v1/infer JSON body. Exported for tests.
 export function buildInferResponse(parsed) {
   return { text: parsed.text, content: parsed.content, stopReason: parsed.stopReason, usage: parsed.usage };
+}
+
+// Build the form-encoded body for a single-price subscription Checkout Session. Pure +
+// exported for tests. client_reference_id + subscription metadata let the webhook map
+// Stripe -> Supabase user.
+export function buildCheckoutForm({ userId, email, stripeCustomerId, priceId, successUrl, cancelUrl }) {
+  const form = {
+    mode: "subscription",
+    "line_items[0][price]": priceId,
+    "line_items[0][quantity]": "1",
+    client_reference_id: userId,
+    "subscription_data[metadata][supabase_user_id]": userId,
+    "metadata[supabase_user_id]": userId,
+    allow_promotion_codes: "true",
+    success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: cancelUrl,
+  };
+  if (stripeCustomerId) form.customer = stripeCustomerId;
+  else if (email) form.customer_email = email;
+  return form;
 }
 
 async function healthz() {
@@ -110,29 +129,19 @@ async function accountStatus(event) {
 // --- /v1/stripe/checkout (auth required; opens a subscription Checkout) ---
 
 async function stripeCheckout(event) {
-  if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_MONTHLY) return json(503, { error: "stripe_not_configured" });
+  if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_ID) return json(503, { error: "stripe_not_configured" });
   const user = await authUser(event);
   if (!user) return json(401, { error: "unauthorized" });
 
-  const body = parseBody(event) || {};
-  const annual = body.plan === "annual" && !!STRIPE_PRICE_ANNUAL;
-  const price = annual ? STRIPE_PRICE_ANNUAL : STRIPE_PRICE_MONTHLY;
-
   const { stripeCustomerId } = await fetchProfile(user.id);
-  const form = {
-    mode: "subscription",
-    "line_items[0][price]": price,
-    "line_items[0][quantity]": "1",
-    // client_reference_id + subscription metadata let the webhook map Stripe -> Supabase user.
-    client_reference_id: user.id,
-    "subscription_data[metadata][supabase_user_id]": user.id,
-    "metadata[supabase_user_id]": user.id,
-    allow_promotion_codes: "true",
-    success_url: `${CHECKOUT_SUCCESS_URL}?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: CHECKOUT_CANCEL_URL,
-  };
-  if (stripeCustomerId) form.customer = stripeCustomerId;
-  else if (user.email) form.customer_email = user.email;
+  const form = buildCheckoutForm({
+    userId: user.id,
+    email: user.email,
+    stripeCustomerId,
+    priceId: STRIPE_PRICE_ID,
+    successUrl: CHECKOUT_SUCCESS_URL,
+    cancelUrl: CHECKOUT_CANCEL_URL,
+  });
 
   const res = await stripePost("/v1/checkout/sessions", form);
   if (!res.ok || !res.json?.url) {
@@ -305,8 +314,7 @@ async function writeProfile(target, fields) {
 // Canonical plan name from the price id we configured, not the editable Stripe nickname.
 function planFromPrice(obj) {
   const priceId = obj.items?.data?.[0]?.price?.id || obj.plan?.id || null;
-  if (priceId && priceId === STRIPE_PRICE_ANNUAL) return "annual";
-  if (priceId && priceId === STRIPE_PRICE_MONTHLY) return "monthly";
+  if (priceId && priceId === STRIPE_PRICE_ID) return "pro";
   return "pro";
 }
 
