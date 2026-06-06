@@ -9,7 +9,7 @@ struct BogiApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("Bogi", systemImage: "fish") {
+        MenuBarExtra("Togi", systemImage: "fish") {
             MenuBarContent()
                 .environmentObject(appDelegate.appState)
         }
