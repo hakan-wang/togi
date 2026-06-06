@@ -114,6 +114,7 @@ final class SidecarClient {
         lock.lock()
         let waiting = pending
         pending.removeAll()
+        tokenHandlers.removeAll()
         restartAttempts += 1
         let attempt = restartAttempts
         lock.unlock()
