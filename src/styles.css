@@ -854,3 +854,24 @@
 @media (prefers-reduced-motion: reduce) {
   .hero-in, .float-soft { animation: none; }
 }
+
+/* waitlist email input (pill, matches the apple button) */
+.waitlist-input {
+  width: 100%;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(120, 150, 200, 0.28);
+  border-radius: 9999px;
+  padding: 0.8rem 1.3rem;
+  font-size: 1rem;
+  color: var(--foreground);
+  outline: none;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.waitlist-input::placeholder { color: rgba(28, 25, 22, 0.4); }
+.waitlist-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+}
