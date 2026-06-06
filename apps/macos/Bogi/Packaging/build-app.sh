@@ -47,6 +47,19 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
     echo "NOTARY_PROFILE unset — skipping notarization (DMG is signed but not notarized)."
   fi
 else
-  echo "DEVELOPER_ID unset — built UNSIGNED $APP for local testing only."
+  # No Developer ID: make sure the main executable is ad-hoc signed so it launches on Apple
+  # Silicon (a fully unsigned binary is killed as "damaged"). The linker already ad-hoc signs
+  # it; we re-sign explicitly via a temp copy. Signing it in place is impossible because
+  # codesign, pointed at a bundle's main executable, redirects to sign the whole bundle, and
+  # the flat SwiftPM resource bundle (Bogi_BogiApp.bundle, no Info.plist) can't be signed.
+  # TCC permissions ride this ad-hoc identity, so they may need re-granting after a rebuild.
+  echo "== ad-hoc sign main executable (local testing; DEVELOPER_ID unset) =="
+  tmp="$(mktemp -d)"
+  cp "$APP/Contents/MacOS/Bogi" "$tmp/Bogi"
+  codesign --force --sign - --entitlements "$PKG/Bogi.entitlements" "$tmp/Bogi"
+  cp "$tmp/Bogi" "$APP/Contents/MacOS/Bogi"
+  rm -rf "$tmp"
+  codesign --verify --verbose=2 "$APP/Contents/MacOS/Bogi" && echo "executable signature OK"
+  echo "open $APP directly (right-click → Open the first time if Finder warns about the developer)."
 fi
 echo "done: $APP"

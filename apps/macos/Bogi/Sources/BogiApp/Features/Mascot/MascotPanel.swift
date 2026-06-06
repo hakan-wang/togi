@@ -29,7 +29,7 @@ final class MascotPanel: NSPanel {
         level = .floating
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
+        hasShadow = false                   // no boxy window shadow; the mascot casts its own soft float shadow
         isMovableByWindowBackground = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 

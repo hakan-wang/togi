@@ -23,6 +23,8 @@
     <string>Togi reads your calendar to know what you planned, so it can compare plan vs reality.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Togi uses the microphone for "Hey Togi" voice planning and commands.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Togi turns what you say into calendar events and commands.</string>
     <!-- Accessibility is requested at runtime via the system Accessibility list, not a usage string. -->
 
     <!-- Google Calendar PKCE redirect (installed-app OAuth, no client secret). -->

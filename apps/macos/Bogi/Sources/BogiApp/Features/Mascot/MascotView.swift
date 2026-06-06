@@ -23,7 +23,7 @@ struct MascotView: View {
                     .saturation(look.saturation)
                     .grayscale(look.grayscale)
                     .background(halo)
-                    .shadow(color: Color(hex: 0x285078).opacity(0.30), radius: 13, y: 9)
+                    .shadow(color: Color(hex: 0x285078).opacity(0.22), radius: 11, y: 7)
                     .scaleEffect(escalationScale * look.scale)
                     .offset(y: look.droopY)
                     .bob(distance: look.bobDistance, duration: look.bobDuration)

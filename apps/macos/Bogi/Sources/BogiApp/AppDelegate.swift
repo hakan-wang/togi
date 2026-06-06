@@ -99,6 +99,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var companion: CompanionPanel?
     private var calm: CalmPanel?
     private var calmScheduler: CalmScheduler?
+    private let hotkey = VoiceHotkeyMonitor()
+
+    /// Hands-free "talk to Togi" voice scheduling. Built lazily from app services on first use:
+    /// the intent brain reuses the existing inference backend, so it needs no extra key; the
+    /// spoken voice upgrades to ElevenLabs when ELEVENLABS_API_KEY is set, else uses macOS speech.
+    private lazy var voiceSession = VoiceSession(
+        voice: VoiceOutput(settings: appState.settings),
+        agent: VoiceCommandAgent { [appState] system, messages in
+            try await appState.inference.infer(system: system, messages: messages, maxTokens: 320)
+        },
+        eventKit: appState.eventKit
+    )
 
     override init() {
         let db: DatabaseService
@@ -174,6 +186,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         scheduler.start()
         calmScheduler = scheduler
+
+        // Tap Control anywhere to talk to Togi. Global tap detection needs Accessibility (the
+        // same permission the capture loop already requests); a real Control shortcut is ignored.
+        hotkey.onTrigger = { [weak self] in
+            guard let self else { return }
+            let busy = self.voiceSession.phase == .listening
+                || self.voiceSession.phase == .thinking
+                || self.voiceSession.phase == .speaking
+            if !busy { self.showCompanion() }
+            self.voiceSession.toggle()
+        }
+        hotkey.start()
     }
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
@@ -192,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func companionPanel() -> CompanionPanel {
         if let companion { return companion }
         let state = appState
+        let voice = voiceSession
         // Demo hook: BOGI_DEMO_CHAT=1 opens with a sample conversation so the grown,
         // scrolling card can be screenshotted. Empty otherwise.
         let seed: [(role: String, text: String)] = ProcessInfo.processInfo.environment["BOGI_DEMO_CHAT"] == "1" ? [
@@ -208,8 +233,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 maxContentHeight: maxContentHeight,
                 onHeightChange: reportHeight,
                 onSettings: { AppDelegate.openSettings() },
-                onClose: { [weak self] in self?.companion?.orderOut(nil) },
-                seedMessages: seed
+                onClose: { [weak self] in
+                    self?.companion?.orderOut(nil)
+                    self?.voiceSession.cancel()
+                },
+                seedMessages: seed,
+                voice: voice
             )
         }
         companion = panel
