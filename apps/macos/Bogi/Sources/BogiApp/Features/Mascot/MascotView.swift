@@ -21,7 +21,6 @@ struct MascotView: View {
                     .scaledToFit()
                     .frame(width: 68, height: 68)
                     .background(halo)
-                    .shadow(color: Color(hex: 0x285078).opacity(0.30), radius: 13, y: 9)
                     .scaleEffect(escalationScale)
                     .bob()
             }

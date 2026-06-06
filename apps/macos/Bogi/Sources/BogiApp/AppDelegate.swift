@@ -20,6 +20,7 @@ final class AppState: ObservableObject {
     let googleCalendar: GoogleCalendarService
     let search: SearchService
     let goals: GoalsService
+    let northStar: NorthStarService
     let insights: InsightsService
     let sidecar: SidecarClient
     private let sidecarTransport: ProcessSidecarTransport
@@ -89,8 +90,11 @@ final class AppState: ObservableObject {
         )
         let goals = GoalsService(database: database)
         let insights = InsightsService(database: database)
+        let northStarSync = NorthStarSync(tokenProvider: { await auth.currentAccessToken() })
+        let northStar = NorthStarService(database: database, sync: northStarSync)
         self.goals = goals
         self.insights = insights
+        self.northStar = northStar
 
         // On-device agent sidecar (bundled Node + LangChain.js). Coach, Planner, and the
         // nudge path all route through it; raw data never leaves the device.
@@ -145,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let presenter = NudgePresenter()
     private var coordinator: JudgeCoordinator?
     private var companion: CompanionPanel?
+    private var onboardingWindow: OnboardingWindow?
 
     override init() {
         let db: DatabaseService
@@ -164,6 +169,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        if appState.settings.bool("onboarding_completed", default: false) {
+            startNormalRuntime()
+        } else {
+            presentOnboarding()
+        }
+
+        // Best-effort: pull the North Star from the account so it follows the user across devices.
+        Task { await appState.northStar.refresh() }
+    }
+
+    /// First-run setup. Shown once; on completion it hands off to the normal runtime. The capture
+    /// loop, mascot, and judge are intentionally NOT started until setup finishes — the Accessibility
+    /// primer (step 5) owns the permission ask, and the mascot shouldn't float over onboarding.
+    private func presentOnboarding() {
+        let coordinator = OnboardingCoordinator(
+            northStar: appState.northStar,
+            capture: appState.capture,
+            planner: appState.planner,
+            googleCalendar: appState.googleCalendar,
+            settings: appState.settings,
+            auth: appState.auth,
+            notifications: NotificationAuthorizer()
+        ) { [weak self] in
+            self?.onboardingWindow?.orderOut(nil)
+            self?.onboardingWindow = nil
+            self?.startNormalRuntime()
+        }
+        let window = OnboardingWindow(coordinator: coordinator)
+        coordinator.hostWindow = window
+        onboardingWindow = window
+        window.present()
+    }
+
+    /// The normal menu-bar runtime: capture loop, floating mascot, and the 5-minute judge.
+    private func startNormalRuntime() {
         if appState.capture.permissionState != .granted {
             appState.capture.requestPermission()
         }
