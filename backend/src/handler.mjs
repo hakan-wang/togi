@@ -1,14 +1,23 @@
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import crypto from "node:crypto";
 
-// Bogi backend — stateless proxy. Holds the Bedrock-invoking IAM role + (later) Supabase
-// service key + Stripe secret. Stores NO user data; the memory bank stays on the Mac.
+// Togi backend — stateless proxy. Holds the Bedrock-invoking IAM role + Supabase service
+// key + Stripe secret. Stores no user data beyond the auth/paid profile and a per-day AI
+// usage counter; the memory bank stays on the Mac.
 const REGION = process.env.BEDROCK_REGION || "eu-west-1";
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || "eu.anthropic.claude-sonnet-4-6";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY || "";
+const STRIPE_PRICE_ANNUAL = process.env.STRIPE_PRICE_ANNUAL || "";
+const CHECKOUT_SUCCESS_URL = process.env.CHECKOUT_SUCCESS_URL || "https://heytogi.com/upgrade-success";
+const CHECKOUT_CANCEL_URL = process.env.CHECKOUT_CANCEL_URL || "https://heytogi.com/upgrade-cancelled";
+const BILLING_RETURN_URL = process.env.BILLING_RETURN_URL || "https://heytogi.com";
+// Free tier: this many AI calls per user per UTC day before the paywall. One-line knob.
+const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || "5");
 const AUTH_DISABLED = process.env.AUTH_DISABLED === "1";
 
 const bedrock = new BedrockRuntimeClient({ region: REGION });
@@ -20,6 +29,8 @@ export const handler = async (event) => {
     if (method === "GET" && path === "/healthz") return await healthz();
     if (method === "POST" && path === "/v1/infer") return await infer(event);
     if (method === "GET" && path === "/v1/account/status") return await accountStatus(event);
+    if (method === "POST" && path === "/v1/stripe/checkout") return await stripeCheckout(event);
+    if (method === "POST" && path === "/v1/stripe/portal") return await stripePortal(event);
     if (method === "POST" && path === "/v1/stripe/webhook") return await stripeWebhook(event);
     return json(404, { error: "not_found" });
   } catch (err) {
@@ -47,14 +58,26 @@ async function healthz() {
     messages: [{ role: "user", content: "Reply with exactly: bogi-bedrock-ok" }],
     maxTokens: 20,
   });
-  return json(200, { ok: true, model: MODEL_ID, region: REGION, bedrock: text.trim() });
+  // authDisabled is surfaced so a wide-open (dev) deploy is obvious from a health check.
+  return json(200, { ok: true, model: MODEL_ID, region: REGION, bedrock: text.trim(), authDisabled: AUTH_DISABLED });
 }
 
-// --- /v1/infer (auth + paid gated) ---
+// --- /v1/infer (auth + paid-or-free-quota gated) ---
 
 async function infer(event) {
-  const gate = await requirePaidUser(event);
-  if (gate.error) return gate.error;
+  const user = await authUser(event);
+  if (!user) return json(401, { error: "unauthorized" });
+
+  // Paid users are unlimited. Free users get FREE_DAILY_LIMIT calls per UTC day, then 402.
+  const { paid } = await fetchProfile(user.id);
+  let freeRemaining = null;
+  if (!paid) {
+    const gate = await consumeFreeCredit(user.id);
+    if (!gate.allowed) {
+      return json(402, { error: "quota_exhausted", limit: FREE_DAILY_LIMIT, used: gate.used });
+    }
+    freeRemaining = Math.max(0, FREE_DAILY_LIMIT - gate.used);
+  }
 
   const body = parseBody(event);
   if (!body?.messages?.length) return json(400, { error: "messages_required" });
@@ -64,7 +87,7 @@ async function infer(event) {
     maxTokens: Math.min(body.maxTokens || 1024, 8192),
     temperature: body.temperature ?? 0,
   });
-  return json(200, { text, usage });
+  return json(200, { text, usage, paid, freeRemaining });
 }
 
 // --- /v1/account/status ---
@@ -72,11 +95,72 @@ async function infer(event) {
 async function accountStatus(event) {
   const user = await authUser(event);
   if (!user) return json(401, { error: "unauthorized" });
-  const { paid, plan } = await fetchPaid(user.id);
-  return json(200, { paid, plan, userId: user.id });
+  const { paid, plan } = await fetchProfile(user.id);
+  let freeRemaining = null;
+  if (!paid) {
+    const used = await usageToday(user.id);
+    freeRemaining = Math.max(0, FREE_DAILY_LIMIT - used);
+  }
+  return json(200, { paid, plan, userId: user.id, freeLimit: FREE_DAILY_LIMIT, freeRemaining });
 }
 
-// --- /v1/stripe/webhook (Stripe-gated; wired once STRIPE_WEBHOOK_SECRET is set) ---
+// --- /v1/stripe/checkout (auth required; opens a subscription Checkout) ---
+
+async function stripeCheckout(event) {
+  if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_MONTHLY) return json(503, { error: "stripe_not_configured" });
+  const user = await authUser(event);
+  if (!user) return json(401, { error: "unauthorized" });
+
+  const body = parseBody(event) || {};
+  const annual = body.plan === "annual" && !!STRIPE_PRICE_ANNUAL;
+  const price = annual ? STRIPE_PRICE_ANNUAL : STRIPE_PRICE_MONTHLY;
+
+  const { stripeCustomerId } = await fetchProfile(user.id);
+  const form = {
+    mode: "subscription",
+    "line_items[0][price]": price,
+    "line_items[0][quantity]": "1",
+    // client_reference_id + subscription metadata let the webhook map Stripe -> Supabase user.
+    client_reference_id: user.id,
+    "subscription_data[metadata][supabase_user_id]": user.id,
+    "metadata[supabase_user_id]": user.id,
+    allow_promotion_codes: "true",
+    success_url: `${CHECKOUT_SUCCESS_URL}?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: CHECKOUT_CANCEL_URL,
+  };
+  if (stripeCustomerId) form.customer = stripeCustomerId;
+  else if (user.email) form.customer_email = user.email;
+
+  const res = await stripePost("/v1/checkout/sessions", form);
+  if (!res.ok || !res.json?.url) {
+    console.error("stripe checkout error", res.status, res.body);
+    return json(502, { error: "stripe_error" });
+  }
+  return json(200, { url: res.json.url });
+}
+
+// --- /v1/stripe/portal (auth required; manage/cancel an existing subscription) ---
+
+async function stripePortal(event) {
+  if (!STRIPE_SECRET_KEY) return json(503, { error: "stripe_not_configured" });
+  const user = await authUser(event);
+  if (!user) return json(401, { error: "unauthorized" });
+
+  const { stripeCustomerId } = await fetchProfile(user.id);
+  if (!stripeCustomerId) return json(409, { error: "no_subscription" });
+
+  const res = await stripePost("/v1/billing_portal/sessions", {
+    customer: stripeCustomerId,
+    return_url: BILLING_RETURN_URL,
+  });
+  if (!res.ok || !res.json?.url) {
+    console.error("stripe portal error", res.status, res.body);
+    return json(502, { error: "stripe_error" });
+  }
+  return json(200, { url: res.json.url });
+}
+
+// --- /v1/stripe/webhook (Stripe-gated; flips profiles.paid + stores customer id) ---
 
 async function stripeWebhook(event) {
   if (!STRIPE_WEBHOOK_SECRET) return json(503, { error: "stripe_not_configured" });
@@ -85,21 +169,64 @@ async function stripeWebhook(event) {
   if (!verifyStripeSignature(raw, sig, STRIPE_WEBHOOK_SECRET)) {
     return json(400, { error: "bad_signature" });
   }
+
   const evt = JSON.parse(raw);
-  const userId =
-    evt?.data?.object?.client_reference_id ||
-    evt?.data?.object?.metadata?.supabase_user_id;
-  if (userId) {
-    const paid = ["checkout.session.completed", "customer.subscription.created",
-      "customer.subscription.updated", "invoice.paid"].includes(evt.type);
-    const canceled = evt.type === "customer.subscription.deleted";
-    if (paid) await setPaid(userId, true, evt?.data?.object?.plan?.nickname || "paid");
-    if (canceled) await setPaid(userId, false, null);
+  const type = evt?.type || "";
+  const obj = evt?.data?.object || {};
+
+  // Decide paid/unpaid. Subscription events carry an authoritative status; other events
+  // are mapped by type.
+  let paid;
+  if (type.startsWith("customer.subscription.")) {
+    paid = ["active", "trialing", "past_due"].includes(obj.status);
+  } else if (["checkout.session.completed", "invoice.paid", "invoice.payment_succeeded"].includes(type)) {
+    paid = true;
+  } else {
+    return json(200, { ignored: type });
   }
+
+  // Validate identifiers before they ever touch a query filter. The metadata user id is
+  // attacker-influenceable in principle (Payment Links, dashboard sessions), so it is only
+  // trusted to BIND a brand-new profile, never to hijack one already tied to another customer.
+  const customerId = isStripeCustomer(obj.customer) ? obj.customer : null;
+  const metaUser =
+    obj.client_reference_id ||
+    obj.metadata?.supabase_user_id ||
+    obj.subscription_details?.metadata?.supabase_user_id ||
+    null;
+  const userId = isUuid(metaUser) ? metaUser : null;
+
+  const fields = { paid, plan: paid ? planFromPrice(obj) : null };
+  if (customerId) fields.stripe_customer_id = customerId;
+
+  // Resolve the target profile. Prefer the customer id (our durable join key) once bound.
+  let target = null;
+  if (customerId) {
+    const existing = await findProfileByCustomer(customerId);
+    if (existing) target = { filter: `stripe_customer_id=eq.${encodeURIComponent(customerId)}` };
+  }
+  if (!target && userId) {
+    const prof = await fetchProfile(userId);
+    if (prof.stripeCustomerId && customerId && prof.stripeCustomerId !== customerId) {
+      console.warn("webhook customer mismatch for user", userId);
+      return json(200, { ignored: "customer_mismatch" });
+    }
+    target = { upsertId: userId };
+  }
+  if (!target) return json(200, { ignored: "unresolved" });
+
+  // Ask Stripe to retry (5xx) if the write matched no row / failed, rather than losing a
+  // paid user silently (PostgREST PATCH returns 200 even when zero rows match).
+  const wrote = await writeProfile(target, fields);
+  if (!wrote) return json(500, { error: "profile_write_failed" });
   return json(200, { received: true });
 }
 
 // --- Supabase helpers ---
+
+function svcHeaders() {
+  return { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` };
+}
 
 async function authUser(event) {
   if (AUTH_DISABLED) return { id: "dev-user" };
@@ -117,45 +244,133 @@ async function authUser(event) {
   return await res.json();
 }
 
-async function fetchPaid(userId) {
-  if (AUTH_DISABLED) return { paid: true, plan: "dev" };
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { paid: false, plan: null };
+async function fetchProfile(userId) {
+  if (AUTH_DISABLED) return { paid: true, plan: "dev", stripeCustomerId: null };
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { paid: false, plan: null, stripeCustomerId: null };
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=paid,plan`,
-    { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } }
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=paid,plan,stripe_customer_id`,
+    { headers: svcHeaders() }
   );
-  if (!res.ok) return { paid: false, plan: null };
+  if (!res.ok) return { paid: false, plan: null, stripeCustomerId: null };
   const rows = await res.json();
-  return { paid: !!rows?.[0]?.paid, plan: rows?.[0]?.plan ?? null };
+  const r = rows?.[0];
+  return { paid: !!r?.paid, plan: r?.plan ?? null, stripeCustomerId: r?.stripe_customer_id ?? null };
 }
 
-async function setPaid(userId, paid, plan) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
-  await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
-    method: "PATCH",
+async function findProfileByCustomer(customerId) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=id`,
+    { headers: svcHeaders() }
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows?.[0] ?? null;
+}
+
+// Write the profile and report whether a row was actually affected. `upsertId` creates the
+// row if the signup trigger lagged; `filter` patches an already-bound profile. Returns false
+// on a failed/zero-row write so the webhook can 5xx and let Stripe retry instead of dropping it.
+async function writeProfile(target, fields) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return false;
+  let res;
+  if (target.upsertId) {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+      method: "POST",
+      headers: {
+        ...svcHeaders(),
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify({ id: target.upsertId, ...fields }),
+    });
+  } else {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?${target.filter}`, {
+      method: "PATCH",
+      headers: { ...svcHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(fields),
+    });
+  }
+  if (!res.ok) {
+    console.error("writeProfile failed", res.status);
+    return false;
+  }
+  const rows = await res.json().catch(() => []);
+  return Array.isArray(rows) ? rows.length > 0 : true;
+}
+
+// Canonical plan name from the price id we configured, not the editable Stripe nickname.
+function planFromPrice(obj) {
+  const priceId = obj.items?.data?.[0]?.price?.id || obj.plan?.id || null;
+  if (priceId && priceId === STRIPE_PRICE_ANNUAL) return "annual";
+  if (priceId && priceId === STRIPE_PRICE_MONTHLY) return "monthly";
+  return "pro";
+}
+
+// Atomically consume one free credit for today. Fails OPEN on infra errors so a DB hiccup
+// never blocks a user mid-task (the downside is a few extra cheap calls, not lost trust).
+async function consumeFreeCredit(userId) {
+  if (AUTH_DISABLED) return { allowed: true, used: 0 };
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { allowed: true, used: 0 };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/consume_ai_credit`, {
+      method: "POST",
+      headers: { ...svcHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ p_user: userId, p_day: todayUTC(), p_max: FREE_DAILY_LIMIT }),
+    });
+    if (!res.ok) {
+      console.warn("consume_ai_credit failed", res.status);
+      return { allowed: true, used: 0 };
+    }
+    const out = await res.json();
+    const row = Array.isArray(out) ? out[0] : out;
+    return { allowed: !!row?.allowed, used: Number(row?.used ?? 0) };
+  } catch (err) {
+    console.warn("consume_ai_credit error", err);
+    return { allowed: true, used: 0 };
+  }
+}
+
+async function usageToday(userId) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return 0;
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/ai_usage?user_id=eq.${encodeURIComponent(userId)}&day=eq.${todayUTC()}&select=count`,
+    { headers: svcHeaders() }
+  );
+  if (!res.ok) return 0;
+  const rows = await res.json();
+  return Number(rows?.[0]?.count ?? 0);
+}
+
+// --- Stripe REST (no SDK; form-encoded like the Stripe API expects) ---
+
+async function stripePost(path, form) {
+  const res = await fetch(`https://api.stripe.com${path}`, {
+    method: "POST",
     headers: {
-      apikey: SUPABASE_SERVICE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
+      Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({ paid, plan }),
+    body: new URLSearchParams(form).toString(),
   });
-}
-
-async function requirePaidUser(event) {
-  const user = await authUser(event);
-  if (!user) return { error: json(401, { error: "unauthorized" }) };
-  const { paid } = await fetchPaid(user.id);
-  if (!paid) return { error: json(402, { error: "payment_required" }) };
-  return { user };
+  const text = await res.text();
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    /* non-JSON error body */
+  }
+  return { ok: res.ok, status: res.status, body: text, json: parsed };
 }
 
 // --- Stripe signature (no SDK; HMAC over `${t}.${payload}`) ---
 
-function verifyStripeSignature(payload, header, secret) {
+function verifyStripeSignature(payload, header, secret, toleranceSec = 300) {
   if (!header) return false;
   const parts = Object.fromEntries(header.split(",").map((p) => p.split("=")));
+  // Reject stale/replayed events: the signed timestamp must be within the tolerance window.
+  const ts = Number(parts.t);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > toleranceSec) return false;
   const expected = crypto.createHmac("sha256", secret).update(`${parts.t}.${payload}`).digest("hex");
   try {
     return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1 || ""));
@@ -164,7 +379,20 @@ function verifyStripeSignature(payload, header, secret) {
   }
 }
 
-// --- HTTP helpers ---
+// --- helpers ---
+
+function todayUTC() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Strict id shape checks so attacker-influenceable webhook fields can never reshape a query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(s) {
+  return typeof s === "string" && UUID_RE.test(s);
+}
+function isStripeCustomer(s) {
+  return typeof s === "string" && /^cus_[A-Za-z0-9]+$/.test(s);
+}
 
 function parseBody(event) {
   try {
