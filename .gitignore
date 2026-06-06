@@ -1,3 +1,8 @@
 apps/macos/Bogi/.build/
 apps/macos/Bogi/.swiftpm/
 .DS_Store
+backend/node_modules/
+backend/dist/
+backend/function.zip
+backend/env.json
+backend/package-lock.json
