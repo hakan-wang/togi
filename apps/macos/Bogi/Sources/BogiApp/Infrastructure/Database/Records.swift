@@ -14,6 +14,7 @@ struct ActivityObservation: Codable, FetchableRecord, PersistableRecord, TableRe
     var contentHash: String?
     var captureMethod: String
     var excluded: Bool
+    var focused: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -25,5 +26,6 @@ struct ActivityObservation: Codable, FetchableRecord, PersistableRecord, TableRe
         case contentHash = "content_hash"
         case captureMethod = "capture_method"
         case excluded
+        case focused
     }
 }
