@@ -11,7 +11,7 @@ struct PaywallView: View {
     /// Sign out / use a different account.
     var onSignOut: () -> Void = {}
 
-    private let features = [
+    private static let features = [
         "Always-on focus tracking, all day",
         "Automatic replanning when you fall behind",
         "Coaching that learns your patterns",
@@ -34,7 +34,7 @@ struct PaywallView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(features, id: \.self) { feature in
+                ForEach(Self.features, id: \.self) { feature in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(BogiColor.primary)

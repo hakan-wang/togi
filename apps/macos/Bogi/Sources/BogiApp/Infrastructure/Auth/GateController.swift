@@ -9,17 +9,25 @@ final class GateController: ObservableObject {
 
     private let auth: SupabaseAuth
     private let gate: AccountGate
+    private var checkTask: Task<Void, Never>?
 
     init(auth: SupabaseAuth, gate: AccountGate) {
         self.auth = auth
         self.gate = gate
     }
 
-    /// Re-run the subscription check and publish the resulting state.
+    /// Re-run the subscription check and publish the resulting state. Cancels any in-flight
+    /// check so the most recent refresh wins (foreground/background can fire these rapidly).
     func refresh() async {
-        state = .checking
-        let outcome = await gate.check()
-        state = GateState(for: outcome)
+        checkTask?.cancel()
+        let task = Task {
+            state = .checking
+            let outcome = await gate.check()
+            guard !Task.isCancelled else { return }
+            state = GateState(for: outcome)
+        }
+        checkTask = task
+        await task.value
     }
 
     func signIn(email: String, password: String) async throws {

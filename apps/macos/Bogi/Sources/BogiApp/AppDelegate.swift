@@ -222,7 +222,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showGateWindow(for state: GateState) {
         let view = GateView(
             state: state,
-            signIn: { [weak self] email, pw in try await self?.gate.signIn(email: email, password: pw) },
+            signIn: { [weak self] email, pw in
+                guard let self else { return }
+                try await self.gate.signIn(email: email, password: pw)
+            },
             openWebsite: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
             onSubscribe: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
             onRecheck: { [weak self] in Task { await self?.gate.refresh() } },
