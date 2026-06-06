@@ -19,7 +19,7 @@ struct SettingsView: View {
 
             LoginView(
                 signIn: { email, password in try await appState.auth.signIn(email: email, password: password) },
-                openWebsite: { NSWorkspace.shared.open(URL(string: "https://bogi.sh/account")!) }
+                openWebsite: { NSWorkspace.shared.open(WebsiteConfig.accountURL) }
             )
             .tabItem { Label("Account", systemImage: "person.crop.circle") }
 
