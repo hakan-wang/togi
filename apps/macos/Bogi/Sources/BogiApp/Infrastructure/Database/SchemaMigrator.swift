@@ -123,6 +123,16 @@ enum SchemaMigrator {
             }
         }
 
+        // Phase 2 — search infrastructure: FTS5 keyword + BLOB vector store.
+        migrator.registerMigration("v2_search") { db in
+            try db.execute(sql: "CREATE VIRTUAL TABLE segment_fts USING fts5(segment_id UNINDEXED, description)")
+            try db.create(table: "segment_embeddings") { t in
+                t.column("segment_id", .text).primaryKey()
+                t.column("vector", .blob).notNull()
+                t.column("dim", .integer).notNull()
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }
