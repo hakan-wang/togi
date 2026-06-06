@@ -38,8 +38,10 @@ NODE_PKG="node-${NODE_VERSION}-darwin-arm64"
 
 mkdir -p "$SIDECAR_DST"
 cp "$SIDECAR_SRC/dist/main.cjs" "$SIDECAR_DST/main.cjs"
-# Ship the native better-sqlite3 module next to the bundle so require() resolves it.
-cp -R "$SIDECAR_SRC/node_modules/better-sqlite3" "$SIDECAR_DST/better-sqlite3"
+# Ship the sidecar's node_modules so native deps (better-sqlite3 -> bindings ->
+# file-uri-to-path) resolve. main.cjs lives in Resources/sidecar/, so Node resolves
+# Resources/sidecar/node_modules automatically — no explicit NODE_PATH needed.
+cp -R "$SIDECAR_SRC/node_modules" "$SIDECAR_DST/node_modules"
 
 # Embed the pinned Node runtime.
 if [ ! -x "$SIDECAR_DST/node" ]; then
@@ -52,7 +54,7 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
   echo "== codesign sidecar (hardened runtime) =="
   # Sign nested executables BEFORE the outer .app so the deep signature is valid.
   codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$SIDECAR_DST/node"
-  find "$SIDECAR_DST/better-sqlite3" -name "*.node" -print0 | \
+  find "$SIDECAR_DST/node_modules" -name "*.node" -print0 | \
     while IFS= read -r -d '' f; do
       codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
     done
