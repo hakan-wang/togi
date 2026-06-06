@@ -119,7 +119,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 2) Fallback: OpenAI structured output (if a key is present)
+  // 2) Groq LLM structured output (free; reuses the transcription key). Real LLM
+  //    categorization without needing backend auth — great default for the demo.
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const OpenAI = (await import("openai")).default;
+      const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
+      const r = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0,
+        messages: [
+          { role: "system", content: systemPrompt(context) + "\nRespond ONLY with a JSON object: {category, subCategory, description, durationMin, matchedPlanId, matched}." },
+          { role: "user", content: `Check-in: "${text}"` },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const obj = JSON.parse(r.choices[0]?.message?.content || "{}");
+      return NextResponse.json(normalize(obj, text, context, "groq"));
+    } catch (e) {
+      console.warn("groq categorize error:", e);
+    }
+  }
+
+  // 3) Fallback: OpenAI structured output (if a key is present)
   if (process.env.OPENAI_API_KEY) {
     try {
       const OpenAI = (await import("openai")).default;
