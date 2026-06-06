@@ -6,3 +6,4 @@ backend/dist/
 backend/function.zip
 backend/env.json
 backend/package-lock.json
+apps/macos/Bogi/build/
