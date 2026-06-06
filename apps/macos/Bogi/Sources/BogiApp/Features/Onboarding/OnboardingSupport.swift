@@ -42,8 +42,7 @@ enum CheckInRhythm: String, CaseIterable, Identifiable {
 /// Onboarding-time configuration that isn't part of the core services.
 enum OnboardingConfig {
     /// Google installed-app (Desktop / iOS) OAuth client ID. Public for the PKCE flow, no secret.
-    /// Paste the real client ID from Google Cloud Console here to make the calendar step live.
-    static let googleClientId = ""
+    static let googleClientId = "217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb.apps.googleusercontent.com"
 
     static var googleConfigured: Bool { !googleClientId.isEmpty }
 
