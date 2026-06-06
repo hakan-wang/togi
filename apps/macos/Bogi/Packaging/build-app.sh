@@ -10,6 +10,8 @@ cd "$(dirname "$0")/.."          # apps/macos/Bogi
 # Finder shows, so these MUST be "Togi" (the executable inside stays "Bogi" to match
 # CFBundleExecutable). Anything named Bogi here leaks the internal name to users.
 APP="build/Togi.app"
+APP_ZIP="build/Togi.app.zip"
+DMG="build/Togi.dmg"
 PKG="Packaging"
 
 echo "== build release =="
@@ -53,6 +55,21 @@ if [ ! -x "$SIDECAR_DST/node" ]; then
   cp "/tmp/${NODE_PKG}/bin/node" "$SIDECAR_DST/node"
 fi
 
+create_dmg() {
+  echo "== dmg =="
+  rm -f "$DMG"
+  # Stage the DMG contents so the mounted window offers a drag-to-install layout:
+  # the app next to an /Applications symlink. Without the symlink users just see a
+  # lone icon and don't know to drag it into Applications.
+  DMG_STAGE="build/dmg-stage"
+  rm -rf "$DMG_STAGE"
+  mkdir -p "$DMG_STAGE"
+  cp -R "$APP" "$DMG_STAGE/"
+  ln -s /Applications "$DMG_STAGE/Applications"
+  hdiutil create -volname Togi -srcfolder "$DMG_STAGE" -ov -format UDZO "$DMG"
+  rm -rf "$DMG_STAGE"
+}
+
 if [ -n "${DEVELOPER_ID:-}" ]; then
   echo "== codesign sidecar (hardened runtime) =="
   # Sign nested executables BEFORE the outer .app so the deep signature is valid.
@@ -68,28 +85,34 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
     --sign "$DEVELOPER_ID" "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
 
-  echo "== dmg =="
-  rm -f build/Togi.dmg
-  # Stage the DMG contents so the mounted window offers a drag-to-install layout:
-  # the app next to an /Applications symlink. Without the symlink users just see a
-  # lone icon and don't know to drag it into Applications.
-  DMG_STAGE="build/dmg-stage"
-  rm -rf "$DMG_STAGE"
-  mkdir -p "$DMG_STAGE"
-  cp -R "$APP" "$DMG_STAGE/"
-  ln -s /Applications "$DMG_STAGE/Applications"
-  hdiutil create -volname Togi -srcfolder "$DMG_STAGE" -ov -format UDZO build/Togi.dmg
-  rm -rf "$DMG_STAGE"
+  if [ -n "${NOTARY_PROFILE:-}" ]; then
+    echo "== notarize + staple app =="
+    rm -f "$APP_ZIP"
+    ditto -c -k --keepParent "$APP" "$APP_ZIP"
+    xcrun notarytool submit "$APP_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$APP"
+    xcrun stapler validate "$APP"
+  else
+    echo "NOTARY_PROFILE unset — skipping app notarization."
+  fi
+
+  create_dmg
+
+  echo "== codesign dmg =="
+  codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
+  codesign --verify --strict --verbose=2 "$DMG"
 
   if [ -n "${NOTARY_PROFILE:-}" ]; then
-    echo "== notarize + staple =="
-    xcrun notarytool submit build/Togi.dmg --keychain-profile "$NOTARY_PROFILE" --wait
-    xcrun stapler staple build/Togi.dmg
-    xcrun stapler staple "$APP"
+    echo "== notarize + staple dmg =="
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DMG"
+    xcrun stapler validate "$DMG"
   else
-    echo "NOTARY_PROFILE unset — skipping notarization (DMG is signed but not notarized)."
+    echo "NOTARY_PROFILE unset — skipping DMG notarization."
   fi
 else
-  echo "DEVELOPER_ID unset — built UNSIGNED $APP for local testing only."
+  create_dmg
+  echo "DEVELOPER_ID unset — built UNSIGNED $APP and $DMG for local testing only."
 fi
 echo "done: $APP"
+echo "done: $DMG"
