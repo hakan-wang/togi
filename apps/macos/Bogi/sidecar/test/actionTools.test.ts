@@ -10,3 +10,13 @@ test("create_block emits an action call and returns its result", async () => {
   expect(seen[0].name).toBe("create_block");
   expect(seen[0].input.title).toBe("Edit video");
 });
+
+test("post_nudge emits an action call", async () => {
+  const seen: any[] = [];
+  const tools = makeActionTools(async (name, input) => { seen.push({ name, input }); return { ok: true }; });
+  const nudge = tools.find((t) => t.name === "post_nudge")!;
+  const out = JSON.parse(await nudge.invoke({ severity: 2, message: "Gently, you drifted to X. Want to refocus?" }));
+  expect(out).toEqual({ ok: true });
+  expect(seen[0].name).toBe("post_nudge");
+  expect(seen[0].input.severity).toBe(2);
+});

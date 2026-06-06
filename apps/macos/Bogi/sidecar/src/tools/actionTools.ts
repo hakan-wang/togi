@@ -30,5 +30,17 @@ export function makeActionTools(callAction: CallAction): StructuredToolInterface
     }
   );
 
-  return [create_block, move_block];
+  const post_nudge = tool(
+    async (input) => JSON.stringify(await callAction("post_nudge", input)),
+    {
+      name: "post_nudge",
+      description: "Show the user a short, kind, supportive nudge when they have drifted off their planned focus. Be specific and honest about the drift but gentle and encouraging. Never use em-dashes.",
+      schema: z.object({
+        severity: z.number().int().min(0).max(3).describe("0 gentle .. 3 urgent"),
+        message: z.string().describe("The nudge text shown above the mascot"),
+      }),
+    }
+  );
+
+  return [create_block, move_block, post_nudge];
 }
