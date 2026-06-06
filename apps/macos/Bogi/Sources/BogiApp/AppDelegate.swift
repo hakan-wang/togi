@@ -171,6 +171,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // TEMP preview hook (reverted before commit): renders the mascot at a set mood/wellbeing
+        // to a PNG. BOGI_SHOW_MASCOT=offtask|ontask|speaking, BOGI_VIT=<0…100>, BOGI_OUT=<path>.
+        let env = ProcessInfo.processInfo.environment
+        if let m = env["BOGI_SHOW_MASCOT"] {
+            let vm = MascotViewModel()
+            vm.vitality = Double(env["BOGI_VIT"] ?? "") ?? 18
+            switch m {
+            case "ontask":   vm.mood = .onTask
+            case "speaking": vm.mood = .speaking; vm.escalationLevel = 2
+            default:         vm.mood = .offTask
+            }
+            let view = MascotView(viewModel: vm)
+                .frame(width: 180, height: 220)
+                .background(Color(white: 0.96))
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 3
+            if let img = renderer.nsImage,
+               let tiff = img.tiffRepresentation,
+               let bmp = NSBitmapImageRep(data: tiff),
+               let png = bmp.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: env["BOGI_OUT"] ?? "/tmp/mascot.png"))
+            }
+            NSApp.terminate(nil)
+            return
+        }
+
         if appState.settings.bool("onboarding_completed", default: false) {
             startNormalRuntime()
         } else {

@@ -19,19 +19,22 @@ struct MascotView: View {
             }
 
             Button(action: { onActivate?() }) {
-                BogiAsset.mascot
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 108, height: 108)
-                    .saturation(max(0.12, look.saturation - 0.22 * discomfort))   // drifting drains the colour
-                    .grayscale(look.grayscale)
-                    .brightness(-0.05 * discomfort)                               // and dims it a touch
-                    .background(halo)
-                    .shadow(color: Color(hex: 0x285078).opacity(0.22), radius: 11, y: 7)
-                    .scaleEffect(escalationScale * look.scale * (1 - 0.04 * discomfort))  // pulls in, uneasy
-                    .rotationEffect(.degrees(sway))                               // tired lean + nervous sway
-                    .offset(y: look.droopY + 9 * discomfort)                      // slumps when off task
-                    .bob(distance: look.bobDistance, duration: look.bobDuration)
+                ZStack {
+                    BogiAsset.mascot
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 108, height: 108)
+                    expressionMouth                                              // drawn mouth: smile → flat → frown
+                }
+                .saturation(max(0.12, look.saturation - 0.22 * discomfort))      // drifting drains the colour
+                .grayscale(look.grayscale)
+                .brightness(-0.05 * discomfort)                                  // and dims it a touch
+                .background(halo)
+                .shadow(color: Color(hex: 0x285078).opacity(0.22), radius: 11, y: 7)
+                .scaleEffect(escalationScale * look.scale * (1 - 0.04 * discomfort))  // pulls in, uneasy
+                .rotationEffect(.degrees(sway))                                  // tired lean + nervous sway
+                .offset(y: look.droopY + 9 * discomfort)                         // slumps when off task
+                .bob(distance: look.bobDistance, duration: look.bobDuration)
             }
             .buttonStyle(.plain)
             .help("Open Togi")
@@ -93,6 +96,54 @@ struct MascotView: View {
         guard discomfort > 0 else { return 0 }
         let amplitude = 2.2 * Double(min(discomfort, 1.6))
         return swaying ? amplitude : -amplitude
+    }
+
+    // MARK: - Drawn mouth (the art has a fixed smile, so we overpaint the expression)
+
+    /// Covers the baked-in smile with the body colour and draws the current mouth on top, so
+    /// the face can actually change: a smile when well, a flat line when drifting, a frown
+    /// while being nudged. The whole stack desaturates with the body.
+    private var expressionMouth: some View {
+        ZStack {
+            Capsule()
+                .fill(Color(hex: 0xa9d0d9))
+                .frame(width: 30, height: 13)
+            MouthShape(curve: mouthCurve)
+                .stroke(Color(hex: 0x33302c), style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
+                .frame(width: 21, height: 11)
+        }
+        .offset(y: 12)
+        .animation(.easeInOut(duration: 0.4), value: mouthCurve)
+    }
+
+    /// +1 = smile, 0 = flat, -1 = frown.
+    private var mouthCurve: CGFloat {
+        switch viewModel.mood {
+        case .speaking: return -1                                  // sad while being nudged
+        case .offTask:  return 0                                   // flat / unimpressed
+        case .onTask:   return 1                                   // happy
+        case .idle:     return viewModel.vitality < 35 ? -0.4 : 1  // droops when truly drained
+        }
+    }
+}
+
+/// A mouth that morphs between a smile (curve = +1), a flat line (0), and a frown (-1).
+private struct MouthShape: Shape {
+    var curve: CGFloat
+    var animatableData: CGFloat {
+        get { curve }
+        set { curve = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let dip = rect.height * curve * 0.6   // middle dips down for a smile, up for a frown
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.midY),
+            control: CGPoint(x: rect.midX, y: rect.midY + dip)
+        )
+        return path
     }
 }
 
