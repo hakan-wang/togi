@@ -30,4 +30,12 @@ final class SchemaMigrationTests: XCTestCase {
             XCTAssertTrue(cols.contains("focused"), "activity_observations needs a focused column")
         }
     }
+
+    func testPlannedBlocksHaveCalendarIdColumn() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            let cols = try conn.columns(in: "planned_blocks").map { $0.name }
+            XCTAssertTrue(cols.contains("calendar_id"), "planned_blocks needs a calendar_id column for two-way sync")
+        }
+    }
 }

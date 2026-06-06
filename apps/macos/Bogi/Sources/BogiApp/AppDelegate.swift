@@ -59,6 +59,8 @@ final class AppState: ObservableObject {
     var onMascotVisibilityChanged: ((Bool) -> Void)?
     var startCalm: (() -> Void)?
     var startCalmOffer: (() -> Void)?
+    /// Ask the AI to draft focused work blocks around today's meetings.
+    var planDay: (() -> Void)?
     /// Demo hook: set Togi's wellbeing 0…100 to preview the thrive/wilt states live.
     var setVitalityDemo: ((Double) -> Void)?
 
@@ -125,6 +127,11 @@ final class AppState: ObservableObject {
         self.sidecar = sidecar
 
         self.planner = PlannerService(repository: plannedBlocks, sidecar: sidecar)
+        // Mirror Bogi-created blocks into Google Calendar (two-way sync). No-ops until connected.
+        self.planner.calendarWriter = GoogleCalendarWriter(
+            service: self.googleCalendar,
+            clientId: GoogleConfig.clientID,
+            clientSecret: GoogleConfig.clientSecret)
         self.coach = CoachService(backend: sidecar, threadId: "coach")
 
         let paused = settings.bool("paused", default: false)
@@ -164,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var companion: CompanionPanel?
     private var calm: CalmPanel?
     private var calmScheduler: CalmScheduler?
+    private var meetingReminders: MeetingReminderCoordinator?
     private var gateWindow: NSWindow?
     private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
     private var gateObservation: AnyCancellable?
@@ -354,6 +362,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         calendarSync.start()
         appState.calendarSync = calendarSync
 
+        // Pre-meeting reminders: nudge 30/15/5 min before each planned block, and (optionally)
+        // offer a breather at the 5-minute mark.
+        let reminders = MeetingReminderCoordinator(
+            blocks: appState.plannedBlocks,
+            settings: appState.settings,
+            onReminder: { [weak self] reminder in self?.presentMeetingReminder(reminder) },
+            onBreather: { [weak self] reminder in self?.presentMeetingBreather(reminder) }
+        )
+        reminders.start()
+        meetingReminders = reminders
+
+        appState.planDay = { [weak self] in self?.planDay() }
+
         appState.startCalm = { [weak self] in self?.showCalm() }
         appState.startCalmOffer = { [weak self] in self?.showCalmOffer() }
         appState.setVitalityDemo = { [weak self] value in self?.mascot?.viewModel.setVitality(value) }
@@ -384,6 +405,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             mascot.update(mood: onTask ? .onTask : .offTask)
             // Settle back to hidden once the nudge has passed, honoring the preference.
             if !appState.mascotVisible { mascot.hide() }
+        }
+    }
+
+    /// Surface a pre-meeting reminder as a mascot bubble. The 5-minute mark is louder (small
+    /// escalation + a beep); the earlier heads-ups stay calm. Unlike off-task nudges this doesn't
+    /// touch Togi's vitality — it's a neutral heads-up, not a judgement.
+    private func presentMeetingReminder(_ reminder: MeetingReminder) {
+        guard let mascot else { return }
+        let urgent = reminder.offset <= 5
+        let decision = NudgeDecision(
+            show: true,
+            escalationLevel: urgent ? 1 : 0,
+            playSound: urgent,
+            text: "\(reminder.title) starts in \(reminder.minutesUntil) min"
+        )
+        mascot.show()
+        mascot.apply(decision)
+        if decision.playSound { NSSound.beep() }
+    }
+
+    /// 5 minutes before a meeting, offer a grounding breath instead of just a bubble.
+    private func presentMeetingBreather(_ reminder: MeetingReminder) {
+        showCalm(.offer)
+    }
+
+    /// Ask the on-device agent to draft focused work blocks around today's meetings. The agent
+    /// calls `create_block` (which mirrors to Google Calendar), so new blocks appear on the
+    /// calendar and the reminder loop picks them up.
+    private func planDay() {
+        mascot?.show()
+        mascot?.apply(NudgeDecision(show: true, escalationLevel: 0, playSound: false,
+                                    text: "on it — drafting your day…"))
+        let planner = appState.planner
+        Task { [weak self] in
+            let prompt = """
+            Plan the rest of today. Look at my calendar and goals, then create focused work \
+            blocks around my existing meetings without overlapping them. Keep each block 25 to 90 \
+            minutes. Create them now.
+            """
+            try? await planner.handle(utterance: prompt)
+            self?.mascot?.apply(NudgeDecision(show: true, escalationLevel: 0, playSound: false,
+                                              text: "drafted a few blocks on your calendar — take a look."))
         }
     }
 

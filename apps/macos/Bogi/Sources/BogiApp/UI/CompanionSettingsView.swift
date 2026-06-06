@@ -5,6 +5,8 @@ import AppKit
 /// capture, and sign in. Lives inside the floating panel so everything is in one place.
 struct CompanionSettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var remindBeforeMeetings = true
+    @State private var breatherBeforeMeetings = false
 
     var body: some View {
         ScrollView {
@@ -15,6 +17,27 @@ struct CompanionSettingsView: View {
                     } else {
                         ProgressView()
                     }
+                }
+
+                Divider().opacity(0.4)
+
+                section("Meetings") {
+                    Toggle("Remind me before meetings (30 / 15 / 5 min)", isOn: $remindBeforeMeetings)
+                        .toggleStyle(.switch)
+                        .onChange(of: remindBeforeMeetings) { _, value in
+                            appState.settings.setBool("meeting_reminders", value)
+                        }
+                    Toggle("Offer a breather 5 min before", isOn: $breatherBeforeMeetings)
+                        .toggleStyle(.switch)
+                        .onChange(of: breatherBeforeMeetings) { _, value in
+                            appState.settings.setBool("meeting_breather", value)
+                        }
+                    Text("Togi gives you a heads-up before each calendar event.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .onAppear {
+                    remindBeforeMeetings = appState.settings.bool("meeting_reminders", default: true)
+                    breatherBeforeMeetings = appState.settings.bool("meeting_breather", default: false)
                 }
 
                 Divider().opacity(0.4)

@@ -18,6 +18,10 @@ struct PlannedBlock: Codable, FetchableRecord, PersistableRecord, TableRecord {
     var status: String                 // planned | done | cancelled | orphaned | …
     var createdByBogi: Bool
     var updatedAt: Date
+    /// Which Google calendar this block lives in (e.g. "primary"), so Bogi can update/delete the
+    /// matching Google event later. nil for local-only blocks and Apple events. Declared last with
+    /// a default so existing initializers keep working.
+    var calendarId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -31,5 +35,6 @@ struct PlannedBlock: Codable, FetchableRecord, PersistableRecord, TableRecord {
         case status
         case createdByBogi = "created_by_bogi"
         case updatedAt = "updated_at"
+        case calendarId = "calendar_id"
     }
 }

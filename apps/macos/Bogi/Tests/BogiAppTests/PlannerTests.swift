@@ -1,7 +1,39 @@
 import XCTest
 @testable import BogiApp
 
+/// Records pushes from PlannerService without touching the network.
+private final class StubCalendarWriter: PlannedBlockCalendarWriter {
+    private(set) var created: [PlannedBlock] = []
+    private(set) var updated: [PlannedBlock] = []
+    let calendarId: String
+    let eventId: String
+
+    init(calendarId: String = "primary", eventId: String = "g-evt-1") {
+        self.calendarId = calendarId
+        self.eventId = eventId
+    }
+
+    func createEvent(for block: PlannedBlock) async -> (calendarId: String, externalEventId: String)? {
+        created.append(block)
+        return (calendarId, eventId)
+    }
+
+    func updateEvent(for block: PlannedBlock) async -> Bool {
+        updated.append(block)
+        return true
+    }
+}
+
 final class PlannerTests: XCTestCase {
+
+    /// Pump the run loop until `condition` holds (lets fire-and-forget push Tasks complete).
+    private func waitUntil(timeout: TimeInterval = 2, _ condition: @autoclosure () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertTrue(condition(), "condition not met within \(timeout)s")
+    }
 
     // MARK: - Repository CRUD + activeBlock
 
@@ -61,6 +93,20 @@ final class PlannerTests: XCTestCase {
         repo.delete(id: "a")
         XCTAssertEqual(repo.count(), 1)
         XCTAssertNil(repo.activeBlock(at: base.addingTimeInterval(1800)))
+    }
+
+    func testUpcomingReturnsBlocksStartingWithinWindow() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        repo.upsert(makeBlock(id: "soon", start: now.addingTimeInterval(600), end: now.addingTimeInterval(2400)))      // +10 min
+        repo.upsert(makeBlock(id: "edge", start: now.addingTimeInterval(1800), end: now.addingTimeInterval(3600)))     // +30 min
+        repo.upsert(makeBlock(id: "far", start: now.addingTimeInterval(4000), end: now.addingTimeInterval(5000)))      // +66 min
+        repo.upsert(makeBlock(id: "past", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(600)))      // started
+
+        let upcoming = repo.upcoming(within: 31 * 60, from: now)
+        XCTAssertEqual(upcoming.map(\.id), ["soon", "edge"])
     }
 
     func testBlocksOnDay() throws {
@@ -154,6 +200,75 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(block.createdByBogi)
         XCTAssertEqual(block.status, "planned")
         XCTAssertEqual(repo.count(), 1)
+    }
+
+    // MARK: - Two-way sync (push to Google)
+
+    func testReconcileStoresCalendarId() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let service = PlannerService(repository: repo)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        service.reconcileExternal([
+            ExternalCalendarEvent(source: "google", externalId: "g-9", title: "Shared",
+                                  start: base, end: base.addingTimeInterval(3600),
+                                  calendarId: "work@example.com")
+        ])
+
+        let block = repo.block(source: "google", externalEventId: "g-9")
+        XCTAssertEqual(block?.calendarId, "work@example.com")
+    }
+
+    func testCreateLocalBlockPushesToGoogleAndStampsIds() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let service = PlannerService(repository: repo)
+        let writer = StubCalendarWriter(calendarId: "primary", eventId: "g-created-1")
+        service.calendarWriter = writer
+
+        let start = Date()
+        let block = service.createLocalBlock(title: "Deep Work", start: start,
+                                             end: start.addingTimeInterval(3600), category: nil)
+        // Returns immediately as a local block; the push happens asynchronously.
+        XCTAssertEqual(block.source, "local")
+
+        waitUntil(repo.block(id: block.id)?.source == "google")
+        let stored = repo.block(id: block.id)
+        XCTAssertEqual(stored?.externalEventId, "g-created-1")
+        XCTAssertEqual(stored?.calendarId, "primary")
+        XCTAssertTrue(stored?.createdByBogi ?? false)
+        XCTAssertEqual(writer.created.count, 1)
+    }
+
+    func testMoveBlockUpdatesExistingGoogleEvent() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let service = PlannerService(repository: repo)
+        let writer = StubCalendarWriter()
+        service.calendarWriter = writer
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        var seeded = makeBlock(id: "m", title: "Focus", start: base, end: base.addingTimeInterval(3600),
+                               source: "google", externalId: "g-evt-1", createdByBogi: true)
+        seeded.calendarId = "primary"
+        repo.upsert(seeded)
+
+        let moved = service.moveBlock(matching: "focus", start: base.addingTimeInterval(7200),
+                                      end: base.addingTimeInterval(10_800))
+        XCTAssertEqual(moved?.id, "m")
+        waitUntil(writer.updated.count == 1)
+        XCTAssertEqual(writer.updated.first?.externalEventId, "g-evt-1")
+    }
+
+    func testLocalBlockWithoutWriterStaysLocal() throws {
+        let db = try DatabaseService(inMemory: true)
+        let repo = PlannedBlockRepository(database: db)
+        let service = PlannerService(repository: repo)   // no calendarWriter
+        let start = Date()
+        let block = service.createLocalBlock(title: "Solo", start: start,
+                                             end: start.addingTimeInterval(600), category: nil)
+        XCTAssertEqual(repo.block(id: block.id)?.source, "local")
     }
 
     // MARK: - PlannerCommandParser.decode
