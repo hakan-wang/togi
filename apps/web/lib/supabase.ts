@@ -17,3 +17,22 @@ export function getSupabase(): SupabaseClient | null {
 
 export const supabaseConfigured = () =>
   !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+/**
+ * Ensure there's a session so Supabase RLS works and the backend gets an auth token —
+ * with no login screen. Uses anonymous sign-in (enable "Anonymous sign-ins" in
+ * Supabase → Authentication → Providers). Safe no-op when Supabase isn't configured.
+ */
+let _signingIn: Promise<void> | null = null;
+export async function ensureSession(): Promise<SupabaseClient | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (!data.session) {
+      if (!_signingIn) _signingIn = sb.auth.signInAnonymously().then(() => undefined).catch(() => undefined);
+      await _signingIn;
+    }
+  } catch { /* offline / anon disabled → caller falls back to localStorage */ }
+  return sb;
+}

@@ -23,7 +23,7 @@
        for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
    ============================================================ */
 import { RealEntry } from "./data";
-import { getSupabase } from "./supabase";
+import { ensureSession } from "./supabase";
 
 const LS_KEY = "togi.real_entries.v1";
 
@@ -55,7 +55,7 @@ export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; vi
   const local = readLocal();
   writeLocal([...local, row]);
 
-  const sb = getSupabase();
+  const sb = await ensureSession();
   if (sb) {
     try {
       const { data: { user } } = await sb.auth.getUser();
@@ -73,7 +73,7 @@ export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; vi
 
 /** Load persisted entries (Supabase if signed in, else localStorage). */
 export async function loadRealEntries(): Promise<StoredEntry[]> {
-  const sb = getSupabase();
+  const sb = await ensureSession();
   if (sb) {
     try {
       const { data: { user } } = await sb.auth.getUser();

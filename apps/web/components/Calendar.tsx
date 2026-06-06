@@ -94,22 +94,37 @@ function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
 }
 
 function MultiDay({ span }: { span: string }) {
-  const cols = span === "3d" ? ["Thu", "Fri", "Sat"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const ppm = 0.42, H = (DAY_END - DAY_START) * ppm;
-  const seedBlocks = (i: number) => PLAN.filter((_, k) => (k + i) % (span === "3d" ? 1 : 2) === 0 || i === 3);
+  const days = span === "3d" ? WEEK.filter((w) => ["Thu", "Fri", "Sat"].includes(w.d)) : WEEK;
+  const ppm = 0.5;
+  const H = (DAY_END - DAY_START) * ppm;
+  const yOf = (m: number) => (m - DAY_START) * ppm;
+  const labels: number[] = [];
+  for (let m = DAY_START; m <= DAY_END; m += 120) labels.push(m);
+  // deterministic, varied blocks per day so the week looks lived-in (today = the real plan)
+  const dayBlocks = (idx: number, isToday: boolean) => (isToday ? PLAN : PLAN.filter((_, k) => (k + idx) % 3 !== 0));
   return (
-    <div className="multi" style={{ height: H + 28 }}>
-      {cols.map((d, i) => (
-        <div className="multi-col" key={d}>
-          <div className={"multi-col-h" + (d === "Thu" ? " today" : "")}>{d}</div>
-          <div className="multi-track" style={{ height: H }}>
-            {(d === "Thu" ? PLAN : seedBlocks(i)).map((b) => {
-              const C = CATEGORIES[b.cat];
-              return <div className="multi-blk" key={b.id} style={{ top: (b.start - DAY_START) * ppm, height: Math.max((b.end - b.start) * ppm, 6), background: C.color, opacity: d === "Thu" ? 0.92 : 0.4 }} />;
-            })}
+    <div className="multi" style={{ height: H + 34 }}>
+      <div className="multi-gutter" style={{ height: H }}>
+        {labels.map((m) => <div key={m} className="multi-hr num" style={{ top: yOf(m) }}>{fmt(m)}</div>)}
+      </div>
+      {days.map((w: any, i: number) => {
+        const isToday = !!w.today;
+        return (
+          <div className="multi-col" key={w.d}>
+            <div className={"multi-col-h" + (isToday ? " today" : "")}>
+              <span className="multi-col-d">{w.d}</span> <span className="multi-col-n num">{w.n}</span>
+            </div>
+            <div className="multi-track" style={{ height: H }}>
+              {labels.map((m) => <div key={m} className="multi-line" style={{ top: yOf(m) }} />)}
+              {dayBlocks(i, isToday).map((b) => {
+                const C = CATEGORIES[b.cat];
+                return <div className="multi-blk" key={b.id} title={`${C.label} · ${b.title}`}
+                  style={{ top: yOf(b.start), height: Math.max((b.end - b.start) * ppm, 11), background: C.color, opacity: isToday ? 1 : 0.8 }} />;
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

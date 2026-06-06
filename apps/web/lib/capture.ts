@@ -5,7 +5,7 @@
    Both go through Next.js API routes so keys/tokens never touch the browser.
    ============================================================ */
 import { CategoryKey } from "./data";
-import { getSupabase } from "./supabase";
+import { ensureSession } from "./supabase";
 
 export interface CategorizeResult {
   category: CategoryKey;
@@ -36,7 +36,7 @@ export async function categorizeText(text: string, ctx: CheckinContext = {}): Pr
   // Pass the Supabase access token (if signed in) so the backend authorizes the Claude call.
   let token: string | undefined;
   try {
-    const sb = getSupabase();
+    const sb = await ensureSession();
     if (sb) token = (await sb.auth.getSession()).data.session?.access_token;
   } catch { /* ignore */ }
 
