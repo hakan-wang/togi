@@ -1,0 +1,145 @@
+{
+  "$comment": "Bogi / Togi design profile. A single droppable source of truth for the brand: logo, fonts, colors, gradients, effects, motion, and copy. Hex values are computed from the live oklch theme tokens.",
+  "name": "Bogi design profile",
+  "version": "1.0.0",
+  "updated": "2026-06-06",
+  "live": {
+    "url": "https://heytogi.michelleqiangzhang.workers.dev",
+    "domain": "heytogi.com (pending nameserver change)",
+    "repo": "github.com/Philipnil06/get-on-my-list",
+    "branch": "michelle"
+  },
+
+  "brand": {
+    "name": "Bogi",
+    "alsoKnownAs": "Togi",
+    "oneLiner": "A private AI accountability coach. You plan your day, and it makes you face what you actually did with each block.",
+    "tagline": "Take back control of your time",
+    "audience": "Students and ordinary people, ADHD or not. Starting in Sweden.",
+    "feeling": "Calm, honest, in control. You stop wondering where your day went.",
+    "canonicalLook": "Dreamy pastel sky + Apple frosted-glass + the soft plush axolotl. Warm and cute, never corporate or cold.",
+    "explorationsDropped": ["dark cold glass", "editorial / broadsheet (paper + vermilion + Instrument Serif body)", "sharp / sword direction"]
+  },
+
+  "logo": {
+    "type": "mascot-as-logo",
+    "asset": "src/assets/mascot.png",
+    "description": "A soft, rounded, baby-blue plush axolotl. Smiling, with three feathery gills on each side, big glossy black eyes, sitting on four little legs. Transparent background.",
+    "bodyColor": "#a7cdd6",
+    "regenPrompt": "A soft plush toy axolotl, baby-blue fleece, rounded chubby body, three feathery gills on each side, big round glossy black eyes, a small embroidered smile, sitting pose, studio product photo, soft even lighting, transparent background.",
+    "usage": "The mascot IS the logo. It floats and gently bobs, peeking over the top edge of the glass card. Keep it cute. Do not flatten it into a corporate icon."
+  },
+
+  "fonts": {
+    "display": {
+      "family": "Instrument Serif",
+      "role": "Headlines and big serif moments. Use italic for accent words.",
+      "weights": ["400", "400 italic"],
+      "css": "\"Instrument Serif\", Georgia, serif"
+    },
+    "body": {
+      "family": "Familjen Grotesk",
+      "role": "Body text, UI, buttons.",
+      "weights": ["400", "500", "600", "700"],
+      "css": "\"Familjen Grotesk\", \"Helvetica Neue\", Arial, sans-serif"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "role": "Small labels, times, meta, data readouts.",
+      "weights": ["400", "500"],
+      "css": "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace"
+    },
+    "googleFontsHref": "https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
+  },
+
+  "colors": {
+    "primary":           { "hex": "#0a88cc", "oklch": "oklch(0.6 0.14 242)",   "role": "Sky-blue accent: buttons, links, active states." },
+    "primaryForeground": { "hex": "#ffffff", "oklch": "oklch(0.99 0 0)",        "role": "Text/icons on primary." },
+    "ink":               { "hex": "#15110d", "oklch": "oklch(0.18 0.01 60)",    "role": "Primary text (warm near-black)." },
+    "muted":             { "hex": "#5a5450", "oklch": "oklch(0.45 0.01 60)",    "role": "Secondary text, captions, labels." },
+    "background":        { "hex": "#ecf7fe", "oklch": "oklch(0.97 0.015 235)",  "role": "Page base color behind the sky." },
+    "mascotBlue":        { "hex": "#a7cdd6", "role": "The plush axolotl's body color." },
+    "glassWhite":        { "rgba": "rgba(255,255,255,0.58)", "role": "Frosted glass surface fill." },
+    "glassBorder":       { "rgba": "rgba(255,255,255,0.75)", "role": "Glass edge highlight." }
+  },
+
+  "gradients": {
+    "sky": {
+      "role": "The dreamy sky background. Blue at the top warming to cream at the bottom.",
+      "hex": "linear-gradient(to bottom, #94ccf3 0%, #b2defa 30%, #d4f0fe 56%, #f6f7e4 80%, #fff9e4 100%)",
+      "oklch": "linear-gradient(to bottom, oklch(0.82 0.08 240) 0%, oklch(0.88 0.06 236) 30%, oklch(0.94 0.035 228) 56%, oklch(0.97 0.025 110) 80%, oklch(0.985 0.03 85) 100%)"
+    },
+    "clouds": {
+      "role": "Soft white cloud blobs layered over the sky, drifting slowly.",
+      "css": "radial-gradient(40% 24% at 22% 82%, rgba(255,255,255,0.92), transparent 70%) plus 3-4 more offset radial blobs"
+    },
+    "glassCard": {
+      "role": "Apple frosted-glass card fill.",
+      "css": "linear-gradient(180deg, rgba(255,255,255,0.58), rgba(255,255,255,0.34))"
+    },
+    "pillButton": {
+      "role": "Primary CTA fill (pill).",
+      "css": "linear-gradient(180deg, color-mix(in oklab, #0a88cc 86%, white), #0a88cc 72%)",
+      "approxHex": "linear-gradient(180deg, #2f9bd6, #0a88cc)"
+    }
+  },
+
+  "effects": {
+    "glass": {
+      "backdropFilter": "blur(30px) saturate(1.7)",
+      "border": "1px solid rgba(255,255,255,0.75)",
+      "borderRadius": "30px",
+      "boxShadow": "inset 0 1px 0 rgba(255,255,255,0.95), 0 34px 80px -34px rgba(60,90,140,0.5)"
+    },
+    "pillButton": {
+      "borderRadius": "9999px",
+      "padding": "0.85rem 2.1rem",
+      "boxShadow": "inset 0 1px 0 rgba(255,255,255,0.55), 0 12px 26px -10px rgba(10,136,204,0.4)",
+      "hover": "translateY(-2px) scale(1.015), brighter, larger soft shadow"
+    },
+    "grain": {
+      "role": "Faint paper grain over the page for texture.",
+      "source": "inline SVG feTurbulence, fractalNoise, baseFrequency 0.8",
+      "opacity": 0.045
+    },
+    "cursorGlow": {
+      "role": "A soft warm radial sunlight that follows the cursor.",
+      "css": "radial-gradient(520px circle at cursor, warm-white 52%, transparent 72%)"
+    },
+    "mascotShadow": "drop-shadow(0 18px 26px rgba(40,80,120,0.3)) so the plush feels like it floats"
+  },
+
+  "motion": {
+    "principle": "Smooth, gentle, Apple-like. Never snappy or harsh.",
+    "easing": "cubic-bezier(0.22, 1, 0.36, 1)",
+    "heroEntrance": "fade in + rise 20px + slight scale-up (0.985 to 1) + de-blur, 0.95s",
+    "float": "gentle vertical bob, translateY 0 to -9px, 5s ease-in-out infinite",
+    "respectsReducedMotion": true
+  },
+
+  "copy": {
+    "headline": "Take back control of your time",
+    "subline": "A private AI coach that helps you plan your day, then face what you actually did with it.",
+    "cta": "Get started",
+    "betaNote": "Free during the beta. Starting in Sweden.",
+    "companionGreeting": "hey. want to know where your time actually went today?",
+    "companionInputPlaceholder": "ask where your time went...",
+    "productOneLiner": "Plan your day, then face what you actually did with it."
+  },
+
+  "voiceRules": [
+    "No em dashes. Use commas, periods, colons, or parentheses.",
+    "No generic startup filler (supercharge, unlock, effortless, level up, seamless).",
+    "Flowing, human, connected sentences, not stacked punchy fragments.",
+    "Avoid the 'it's not X, it's Y' construction.",
+    "Warm and honest, a little calm. UI labels often lowercase.",
+    "No emojis in the UI."
+  ],
+
+  "components": {
+    "skyBackground": "Fixed sky gradient + slow-drifting soft white cloud blobs + a cursor-following warm sun-glow.",
+    "glassHero": "Frosted glass card (30px radius) holding the headline, subline, and pill button, with the plush axolotl peeking over the top edge for depth.",
+    "appleButton": "Blue pill CTA with a soft inner highlight and a smooth hover lift.",
+    "desktopCompanion": "A small floating draggable axolotl that opens a frosted chat panel which grows as you talk."
+  }
+}
