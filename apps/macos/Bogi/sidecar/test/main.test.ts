@@ -11,3 +11,14 @@ test("chat message produces a result line", async () => {
   expect(out.join("")).toContain('"kind":"result"');
   expect(out.join("")).toContain("you did great");
 });
+
+test("per-request token is surfaced via setToken before invoke", async () => {
+  let seen: string | undefined = "unset";
+  const dispatch = makeDispatcher({
+    agent: { invoke: async () => ({ messages: [{ content: "ok" }] }) } as any,
+    write: () => {},
+    setToken: (t) => { seen = t; },
+  });
+  await dispatch({ kind: "chat", id: "1", threadId: "t1", text: "hi", token: "fresh-token" });
+  expect(seen).toBe("fresh-token");
+});

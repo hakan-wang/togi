@@ -13,6 +13,11 @@ final class SidecarClient {
     private var restartAttempts = 0
     /// Returns a JSON-encodable result for an action call (name, input) -> result.
     var actionHandler: ((_ name: String, _ input: [String: Any]) async -> [String: Any])?
+    /// Supplies a fresh auth token for each outgoing chat/plan/judge request. The token
+    /// rotates ~hourly, so it is fetched per-request rather than baked in at launch. When
+    /// nil (or it returns nil), the `token` field is omitted and the sidecar falls back to
+    /// its launch-time env token.
+    var tokenProvider: (() async -> String?)?
 
     init(transport: SidecarTransport, restartDelay: TimeInterval = 1.0) {
         self.transport = transport
@@ -51,7 +56,11 @@ final class SidecarClient {
     private func request(kind: String, threadId: String, text: String,
                          onToken: ((String) -> Void)? = nil) async throws -> String {
         let id = nextId()
-        let payload: [String: Any] = ["kind": kind, "id": id, "threadId": threadId, "text": text]
+        // Fetch a fresh auth token per request (it rotates ~hourly). Omitted when no
+        // provider is set so the sidecar falls back to its launch-time env token.
+        let token = await tokenProvider?()
+        var payload: [String: Any] = ["kind": kind, "id": id, "threadId": threadId, "text": text]
+        if let token { payload["token"] = token }
         let data = try JSONSerialization.data(withJSONObject: payload)
         let line = String(data: data, encoding: .utf8)! + "\n"
         return try await withCheckedThrowingContinuation { cont in

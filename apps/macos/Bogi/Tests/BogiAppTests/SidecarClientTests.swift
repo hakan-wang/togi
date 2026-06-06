@@ -82,6 +82,31 @@ final class SidecarClientTests: XCTestCase {
         XCTAssertEqual(result, "Hello")
     }
 
+    func testRequestIncludesFreshTokenFromProvider() async throws {
+        let transport = FakeTransport()
+        transport.autoReply = { line in
+            guard let id = FakeTransport.idFrom(line) else { return nil }
+            return #"{"kind":"result","id":"\#(id)","ok":true,"text":"ok"}"#
+        }
+        let client = SidecarClient(transport: transport)
+        client.tokenProvider = { "fresh-token-123" }
+        try client.start()
+        _ = try await client.chat("hi", threadId: "t1")
+        XCTAssertTrue(transport.sent.first?.contains("\"token\":\"fresh-token-123\"") == true)
+    }
+
+    func testRequestOmitsTokenWhenNoProvider() async throws {
+        let transport = FakeTransport()
+        transport.autoReply = { line in
+            guard let id = FakeTransport.idFrom(line) else { return nil }
+            return #"{"kind":"result","id":"\#(id)","ok":true,"text":"ok"}"#
+        }
+        let client = SidecarClient(transport: transport)
+        try client.start()
+        _ = try await client.chat("hi", threadId: "t1")
+        XCTAssertFalse(transport.sent.first?.contains("\"token\"") == true)
+    }
+
     func testBackoffGrowsBetweenCrashes() async throws {
         let transport = FakeTransport()
         let client = SidecarClient(transport: transport, restartDelay: 0.01)

@@ -8,10 +8,18 @@ interface AgentLike {
   __bogiModel?: { activeRequestId: string | null };
 }
 
-export function makeDispatcher(deps: { agent: AgentLike; write: (line: string) => void }) {
+export function makeDispatcher(deps: {
+  agent: AgentLike;
+  write: (line: string) => void;
+  // Optional sink for a fresh per-request auth token. The transport closures
+  // (WS connect / HTTP post) read this before each inference so a token that
+  // rotated after launch is still used. No-op when omitted (tests).
+  setToken?: (token: string | undefined) => void;
+}) {
   return async function dispatch(msg: Inbound): Promise<void> {
     if (msg.kind === "chat" || msg.kind === "plan" || msg.kind === "judge") {
       try {
+        deps.setToken?.(msg.token);
         if (deps.agent.__bogiModel) deps.agent.__bogiModel.activeRequestId = msg.id;
         const res = await deps.agent.invoke(
           { messages: [{ role: "user", content: msg.text }] },
@@ -30,10 +38,13 @@ export function makeDispatcher(deps: { agent: AgentLike; write: (line: string) =
 
 // Build a streaming transport backed by a `ws` WebSocket. One connection per inference:
 // connect to BOGI_WS_URL?token=..., send {action:"infer", ...}, yield parsed frames until
-// stop/done/error. Not exercised by unit tests (the model uses an injected fake `stream`).
-export function makeWsStream(wsUrl: string, token: string): StreamFn {
+// stop/done/error. The token is resolved per-connection via `getToken` so a token that
+// rotated after launch is honored. Not exercised by unit tests (the model uses an injected
+// fake `stream`).
+export function makeWsStream(wsUrl: string, getToken: () => string): StreamFn {
   return async function* (body): AsyncIterable<StreamFrame> {
     const { default: WebSocket } = await import("ws");
+    const token = getToken();
     const sep = wsUrl.includes("?") ? "&" : "?";
     const ws = new WebSocket(`${wsUrl}${sep}token=${encodeURIComponent(token)}`);
 
@@ -88,11 +99,17 @@ export async function runStdio(): Promise<void> {
   const { openReadOnly } = await import("./db.js");
   const dbPath = process.env.BOGI_DB_PATH!;
   const baseURL = process.env.BOGI_BACKEND_URL!;
-  const token = process.env.BOGI_AUTH_TOKEN ?? "";
+  const envToken = process.env.BOGI_AUTH_TOKEN ?? "";
+  // The auth token rotates ~hourly. The app threads a fresh token on each request
+  // frame; `currentToken` holds the token for the in-flight dispatch (set by the
+  // dispatcher's setToken before each agent.invoke), falling back to the env token
+  // captured at launch.
+  let currentToken = envToken;
+  const getToken = () => currentToken || envToken;
   const post = async (body: unknown) => {
     const r = await fetch(`${baseURL}/v1/infer`, {
       method: "POST",
-      headers: { "content-type": "application/json", "X-Bogi-Authorization": `Bearer ${token}` },
+      headers: { "content-type": "application/json", "X-Bogi-Authorization": `Bearer ${getToken()}` },
       body: JSON.stringify(body),
     });
     const raw = await r.text();
@@ -126,11 +143,15 @@ export async function runStdio(): Promise<void> {
         if (id != null) process.stdout.write(encodeMessage({ kind: "token", id, text }));
       }
     : undefined;
-  const stream = wsUrl ? makeWsStream(wsUrl, token) : undefined;
+  const stream = wsUrl ? makeWsStream(wsUrl, getToken) : undefined;
 
   const agent = createBogiAgent(wsUrl ? { tools, stream, onToken } : { tools, post });
   modelRef = (agent as unknown as { __bogiModel?: { activeRequestId: string | null } }).__bogiModel;
-  const dispatch = makeDispatcher({ agent, write: (l) => process.stdout.write(l) });
+  const dispatch = makeDispatcher({
+    agent,
+    write: (l) => process.stdout.write(l),
+    setToken: (t) => { currentToken = t ?? envToken; },
+  });
   const decoder = new LineDecoder((m) => {
     if (m.kind === "action_result") { pendingActions.get((m as any).callId)?.((m as any).result); pendingActions.delete((m as any).callId); return; }
     void dispatch(m);

@@ -207,6 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 
+        // Supply a fresh auth token on every chat/plan/judge request. The token rotates
+        // ~hourly, so baking it into the sidecar env at launch would 401 after expiry once
+        // auth is enforced. This threads a current token per request instead.
+        appState.sidecar.tokenProvider = { [weak self] in await self?.appState.auth.currentAccessToken() }
+
         // Launch the sidecar once a fresh auth token is available.
         Task { await self.appState.startSidecar() }
 
