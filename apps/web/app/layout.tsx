@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 // Design tokens (order matters — mirrors the _ds styles.css entry point)
 import "../styles/tokens/fonts.css";
 import "../styles/tokens/colors.css";
@@ -27,7 +28,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
+      </body>
     </html>
   );
 }

@@ -88,7 +88,7 @@ function Toggle({ on, onClick }: any) {
   return <button className={"toggle" + (on ? " on" : "")} onClick={onClick}><span className="toggle-knob" /></button>;
 }
 
-export function SettingsPage() {
+export function SettingsPage({ onConnectCalendar, calStatus, calConnected }: { onConnectCalendar?: () => void; calStatus?: string | null; calConnected?: boolean }) {
   const [s, setS] = useState<any>({ checkin: true, call: false, blank: false, wake: true, reduce: false });
   const set = (k: string) => setS((p: any) => ({ ...p, [k]: !p[k] }));
   const Row = ({ k, title, sub }: any) => (
@@ -96,6 +96,18 @@ export function SettingsPage() {
   );
   return (
     <div className="page-narrow fade-up">
+      <div className="card">
+        <div className="card-head"><span className="card-title">Calendar</span><span className="card-sub">your real day</span></div>
+        <div className="set-row">
+          <div>
+            <div className="set-title">{calConnected ? "Google Calendar connected" : "Connect Google Calendar"}</div>
+            <div className="set-sub">{calStatus || "Pull in today’s real events so Togi can check in when blocks end."}</div>
+          </div>
+          <button className="cta-btn" style={{ flex: "0 0 auto" }} onClick={() => onConnectCalendar && onConnectCalendar()}>
+            <IcMic size={15} /> {calConnected ? "Refresh" : "Connect"}
+          </button>
+        </div>
+      </div>
       <div className="card">
         <div className="card-head"><span className="card-title">Check-ins</span><span className="card-sub">a nudge, never a nag</span></div>
         <Row k="checkin" title="Remind me when a block ends" sub="Default on — you downloaded Togi for this. Toggle off anytime." />

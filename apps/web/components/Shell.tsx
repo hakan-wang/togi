@@ -81,6 +81,8 @@ export function TogiAppB() {
   const [banner, setBanner] = useState(true);
   const [real, setReal] = useState<RealEntry[]>(REAL_SEED);
   const [plan, setPlan] = useState<PlanBlock[]>(PLAN);
+  const [calConnected, setCalConnected] = useState(false);
+  const [calStatus, setCalStatus] = useState<string | null>(null);
   const [insight, setInsight] = useState<BannerInsight>(() => computeInsight(REAL_SEED));
   const [vocab, setVocab] = useState<Vocabulary>({ projects: [], activities: STARTER_ACTIVITIES });
   const ackTimer = useRef<any>(null);
@@ -183,6 +185,19 @@ export function TogiAppB() {
     return { status: "done" };
   }
 
+  // ---- Connect Google Calendar (read today's real events into the Plan timeline) ----
+  async function connectCalendar() {
+    setCalStatus("Connecting…");
+    try {
+      const { getCalendarToken, fetchTodayEvents } = await import("../lib/gcal");
+      const token = await getCalendarToken();
+      const evs = await fetchTodayEvents(token);
+      setCalConnected(true);
+      if (evs.length) { setPlan(evs); setTab("today"); setView("plan"); setCalStatus(`Connected — ${evs.length} event${evs.length > 1 ? "s" : ""} today.`); }
+      else setCalStatus("Connected — no timed events today (showing the demo day).");
+    } catch (e: any) { setCalStatus(e?.message || "Couldn’t connect — check the setup guide."); }
+  }
+
   const onAction = (action: string) => {
     if (action === "real") { setTab("today"); setView("real"); logged("On your Real timeline."); }
     if (action === "plan") { setTab("today"); setView("plan"); logged("Tomorrow’s taking shape — saved."); }
@@ -209,7 +224,7 @@ export function TogiAppB() {
         )}
         {tab === "sessions" && (<div className="content-scroll"><SessionsView onOpenSession={startSession} /></div>)}
         {tab === "insights" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header><InsightsPage onOpenSession={openSession} /></div></div>)}
-        {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage /></div></div>)}
+        {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage onConnectCalendar={connectCalendar} calStatus={calStatus} calConnected={calConnected} /></div></div>)}
       </main>
       {dockVisible && <TogiDock onOpenSession={startSession} coach={coach} />}
       {capture && <TodayCheckin context={capture.context} onSubmit={(input) => capture.plan ? handlePlan(capture.context, input) : handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
