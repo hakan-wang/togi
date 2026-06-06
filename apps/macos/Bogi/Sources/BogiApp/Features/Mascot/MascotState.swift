@@ -23,12 +23,12 @@ struct VitalityLook {
     init(_ vitality: Double) {
         let v = Swift.max(0, Swift.min(100, vitality))
         let t = v / 100
-        saturation  = 0.3 + 0.9 * t
-        grayscale   = Swift.max(0, (36 - v) / 36 * 0.45)
-        scale       = CGFloat(0.95 + 0.10 * t)
-        droopY      = CGFloat(9 - 12 * t)
-        bobDistance = CGFloat(4 + 6 * t)
-        bobDuration = 4.6 - 2.2 * t
+        saturation  = 0.22 + 0.98 * t                     // drains harder when neglected
+        grayscale   = Swift.max(0, (50 - v) / 50 * 0.55)  // greys in earlier (below ~50) and deeper
+        scale       = CGFloat(0.92 + 0.13 * t)            // visibly smaller when low, fuller when thriving
+        droopY      = CGFloat(14 - 17 * t)                // slumps lower when low, lifts when high
+        bobDistance = CGFloat(3 + 7 * t)                  // barely bobs when drained, bouncy when alive
+        bobDuration = 5.4 - 2.8 * t                       // sluggish when low, lively when high
     }
 }
 
@@ -78,7 +78,7 @@ final class MascotViewModel: ObservableObject {
     /// sustained follow-through to thrive and a rough patch to wilt, and it always
     /// recovers. Called each judge tick.
     func nudgeVitality(onTask: Bool) {
-        vitality = (vitality + (onTask ? 1.6 : -2.2)).clampedToVitality()
+        vitality = (vitality + (onTask ? 1.6 : -2.8)).clampedToVitality()
     }
 
     /// Set wellbeing directly (demo control now; real follow-through data later).
