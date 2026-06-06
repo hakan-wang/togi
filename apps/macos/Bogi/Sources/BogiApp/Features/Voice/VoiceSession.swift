@@ -19,9 +19,11 @@ final class VoiceSession: ObservableObject {
         case error         // something went wrong
     }
 
-    /// A calendar event Togi just created, kept so the user can undo it.
+    /// A calendar event Togi just created, kept so the user can undo it. `source` records which
+    /// backend it went to (Google vs Apple) so the undo deletes it from the right place.
     struct Scheduled: Equatable {
         let id: String
+        let source: CalendarRouter.Source
         let title: String
         let start: Date
         let end: Date
@@ -40,7 +42,7 @@ final class VoiceSession: ObservableObject {
     private let recognizer = SpeechRecognizer()
     private let voice: VoiceOutput
     private let agent: VoiceCommandAgent
-    private let eventKit: EventKitService
+    private let calendar: CalendarRouter
     private var history: [VoiceCommandAgent.Turn] = []
     private var cancellables: Set<AnyCancellable> = []
     /// Push-to-talk (Control held) vs the tap mic in the chat — changes the follow-up behaviour.
@@ -52,10 +54,10 @@ final class VoiceSession: ObservableObject {
     /// scheduled card up for Undo.
     private var handsFree = false
 
-    init(voice: VoiceOutput, agent: VoiceCommandAgent, eventKit: EventKitService) {
+    init(voice: VoiceOutput, agent: VoiceCommandAgent, calendar: CalendarRouter) {
         self.voice = voice
         self.agent = agent
-        self.eventKit = eventKit
+        self.calendar = calendar
 
         recognizer.$transcript
             .receive(on: RunLoop.main)
@@ -187,11 +189,12 @@ final class VoiceSession: ObservableObject {
 
     func undo() {
         guard let event = lastEvent else { return }
-        _ = eventKit.deleteEvent(identifier: event.id)
+        let booked = CalendarRouter.Booked(id: event.id, source: event.source)
         lastEvent = nil
         let line = "okay, i removed \(event.title)."
         togiLine = line
         Task {
+            await calendar.delete(booked)
             phase = .speaking
             await voice.speak(line)
             phase = .idle
@@ -266,20 +269,27 @@ final class VoiceSession: ObservableObject {
     }
 
     private func schedule(title: String, start: Date, end: Date, say: String) async {
-        if eventKit.authorizationStatus() == .notDetermined {
-            _ = await eventKit.requestAccess()
-        }
-        guard eventKit.authorizationStatus() == .granted else {
-            let line = "i need calendar access to add that. turn it on in system settings, then ask me again."
-            togiLine = line
-            phase = .speaking
-            await voice.speak(line)
-            phase = .denied
-            if handsFree { autoIdle(after: 6) }   // don't get stuck non-idle (a later tap would just cancel)
-            return
+        // When Google is connected we book straight to it and skip the Apple permission dance.
+        // Otherwise Apple Calendar is the target, so make sure we have Calendar access first.
+        if !calendar.googleConnected {
+            if calendar.appleNeedsPermission() {
+                _ = await calendar.requestAppleAccess()
+            }
+            guard calendar.appleAuthorized() else {
+                let line = "i need calendar access to add that. turn it on in system settings, then ask me again."
+                togiLine = line
+                phase = .speaking
+                await voice.speak(line)
+                phase = .denied
+                if handsFree { autoIdle(after: 6) }   // don't get stuck non-idle (a later tap would just cancel)
+                return
+            }
         }
 
-        guard let id = eventKit.createEvent(title: title, start: start, end: end, notes: "Added by Togi") else {
+        let booked: CalendarRouter.Booked
+        do {
+            booked = try await calendar.book(title: title, start: start, end: end, notes: "Added by Togi")
+        } catch {
             let line = "hmm, i couldn't save that to your calendar."
             togiLine = line
             phase = .speaking
@@ -289,7 +299,7 @@ final class VoiceSession: ObservableObject {
             return
         }
 
-        lastEvent = Scheduled(id: id, title: title, start: start, end: end)
+        lastEvent = Scheduled(id: booked.id, source: booked.source, title: title, start: start, end: end)
         let line = say.isEmpty ? "done, i've added \(title) to your calendar." : say
         history.append(.init(role: "togi", text: line))
         togiLine = line

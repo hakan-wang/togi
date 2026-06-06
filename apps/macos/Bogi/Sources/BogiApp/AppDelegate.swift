@@ -18,6 +18,8 @@ final class AppState: ObservableObject {
     let plannedBlocks: PlannedBlockRepository
     let planner: PlannerService
     let eventKit: EventKitService
+    /// Routes voice-scheduled events to Google Calendar (when connected) or Apple Calendar.
+    let calendar: CalendarRouter
     let search: SearchService
     let goals: GoalsService
     let insights: InsightsService
@@ -69,7 +71,9 @@ final class AppState: ObservableObject {
         self.segments = SegmentStore(database: database)
         self.plannedBlocks = plannedBlocks
         self.planner = PlannerService(repository: plannedBlocks)
-        self.eventKit = EventKitService()
+        let eventKit = EventKitService()
+        self.eventKit = eventKit
+        self.calendar = CalendarRouter(eventKit: eventKit, settings: settings)
         self.search = SearchService(
             database: database,
             index: VectorIndex(database: database),
@@ -111,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         agent: VoiceCommandAgent { [appState] system, messages in
             try await appState.inference.infer(system: system, messages: messages, maxTokens: 320)
         },
-        eventKit: appState.eventKit
+        calendar: appState.calendar
     )
 
     override init() {

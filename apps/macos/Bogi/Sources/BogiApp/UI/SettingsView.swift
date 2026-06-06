@@ -14,7 +14,7 @@ struct SettingsView: View {
             PlaceholderTab(title: "Capture", note: "Pause, app/domain excludes, retention — Phase 1")
                 .tabItem { Label("Capture", systemImage: "eye") }
 
-            PlaceholderTab(title: "Calendars", note: "Apple (EventKit) + Google (PKCE) — Phase 4")
+            CalendarsSettingsTab(settings: appState.settings, calendar: appState.calendar)
                 .tabItem { Label("Calendars", systemImage: "calendar") }
 
             LoginView(
@@ -44,6 +44,89 @@ private struct PlaceholderTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+}
+
+/// Calendars tab: connect Google Calendar so voice-scheduled events sync straight to Google.
+/// Without it, Togi falls back to Apple Calendar (whatever account is connected in macOS Calendar),
+/// so scheduling still works — it just won't go to Google directly.
+private struct CalendarsSettingsTab: View {
+    let settings: SettingsStore
+    let calendar: CalendarRouter
+
+    @State private var clientId = ""
+    @State private var redirectScheme = ""
+    @State private var saved = false
+    @State private var connected = false
+    @State private var working = false
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section("Google Calendar") {
+                if connected {
+                    Label("connected to google calendar", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text("voice events go straight to your google calendar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("disconnect") {
+                        calendar.disconnectGoogle()
+                        refresh()
+                    }
+                } else {
+                    SecureField("OAuth client id", text: $clientId)
+                    TextField("redirect scheme", text: $redirectScheme, prompt: Text("com.bogi.app"))
+                    Text("paste the client id from your google cloud oauth client (ios/macos type). leave the scheme on its default unless your client uses a different one.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button(saved ? "saved" : "save") { persist(); saved = true }
+                        Button(working ? "connecting…" : "connect google calendar") { connect() }
+                            .disabled(working || clientId.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                if let error {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+            }
+            Section {
+                Text("no google account connected? togi books to apple calendar instead. add a google account in the mac's calendar app and those events sync to google too.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .onAppear {
+            clientId = settings.string("google_client_id") ?? ""
+            redirectScheme = settings.string("google_redirect_scheme") ?? ""
+            refresh()
+        }
+        .onChange(of: clientId) { _, _ in saved = false }
+        .onChange(of: redirectScheme) { _, _ in saved = false }
+    }
+
+    private func refresh() { connected = calendar.googleConnected }
+
+    private func persist() {
+        settings.set("google_client_id", clientId.trimmingCharacters(in: .whitespacesAndNewlines))
+        let scheme = redirectScheme.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.set("google_redirect_scheme", scheme.isEmpty ? nil : scheme)
+    }
+
+    private func connect() {
+        working = true
+        error = nil
+        persist()   // so the router authorizes with the id/scheme currently in the fields
+        Task {
+            do {
+                try await calendar.connectGoogle()
+            } catch {
+                self.error = "couldn't connect: \(error.localizedDescription)"
+            }
+            working = false
+            refresh()
+        }
     }
 }
 

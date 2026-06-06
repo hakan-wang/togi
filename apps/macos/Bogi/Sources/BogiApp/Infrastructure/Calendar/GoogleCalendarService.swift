@@ -84,6 +84,10 @@ final class GoogleCalendarService {
         tokenStore.delete(account: Self.keychainAccount)
     }
 
+    /// Whether a token bundle is present in the Keychain — i.e. the user has connected Google.
+    /// Used by the calendar router to decide whether to book straight to Google.
+    var isAuthenticated: Bool { loadTokens() != nil }
+
     // MARK: - Authorization (installed-app PKCE)
 
     enum GoogleCalendarError: Error {
@@ -300,6 +304,90 @@ final class GoogleCalendarService {
                 start: start,
                 end: end
             )
+        }
+    }
+
+    // MARK: - Events API (write)
+
+    private struct CreatedEvent: Decodable { var id: String }
+
+    /// Create an event on the user's primary Google calendar. Mirrors EventKit's reminder ladder
+    /// (1h / 30m / 10m popups). Refreshes the access token once on a 401. Returns the new event id
+    /// (used for undo). `clientId` is needed for the refresh path; pass the id used to authorize.
+    @discardableResult
+    func createEvent(title: String, start: Date, end: Date, notes: String?, clientId: String) async throws -> String {
+        guard let bundle = loadTokens() else { throw GoogleCalendarError.notAuthenticated }
+        do {
+            return try await createEvent(title: title, start: start, end: end, notes: notes, accessToken: bundle.accessToken)
+        } catch GoogleCalendarError.requestFailed(let status) where status == 401 {
+            let refreshed = try await refreshAccessToken(clientId: clientId)
+            return try await createEvent(title: title, start: start, end: end, notes: notes, accessToken: refreshed)
+        }
+    }
+
+    private func createEvent(title: String, start: Date, end: Date, notes: String?, accessToken: String) async throws -> String {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        // A zero-or-negative span would be rejected by Google; default to 30 minutes like EventKit.
+        let safeEnd = end > start ? end : start.addingTimeInterval(30 * 60)
+        let tz = TimeZone.current.identifier
+
+        var body: [String: Any] = [
+            "summary": title,
+            "start": ["dateTime": iso.string(from: start), "timeZone": tz],
+            "end": ["dateTime": iso.string(from: safeEnd), "timeZone": tz],
+            "reminders": [
+                "useDefault": false,
+                "overrides": [
+                    ["method": "popup", "minutes": 60],
+                    ["method": "popup", "minutes": 30],
+                    ["method": "popup", "minutes": 10]
+                ]
+            ]
+        ]
+        if let notes { body["description"] = notes }
+
+        var request = URLRequest(url: URL(string: Self.eventsListBase)!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw GoogleCalendarError.requestFailed(status: http.statusCode)
+        }
+        return try JSONDecoder().decode(CreatedEvent.self, from: data).id
+    }
+
+    /// Delete an event Togi created on the primary calendar (used for undo). Refreshes once on 401.
+    /// Treats 404/410 as success — the event is already gone, which is the desired end state.
+    @discardableResult
+    func deleteEvent(id: String, clientId: String) async throws -> Bool {
+        guard let bundle = loadTokens() else { throw GoogleCalendarError.notAuthenticated }
+        do {
+            try await deleteEvent(id: id, accessToken: bundle.accessToken)
+            return true
+        } catch GoogleCalendarError.requestFailed(let status) where status == 401 {
+            let refreshed = try await refreshAccessToken(clientId: clientId)
+            try await deleteEvent(id: id, accessToken: refreshed)
+            return true
+        }
+    }
+
+    private func deleteEvent(id: String, accessToken: String) async throws {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: Self.eventsListBase + "/" + encoded) else {
+            throw GoogleCalendarError.requestFailed(status: -1)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            if http.statusCode == 404 || http.statusCode == 410 { return }   // already gone
+            throw GoogleCalendarError.requestFailed(status: http.statusCode)
         }
     }
 
