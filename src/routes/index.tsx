@@ -77,6 +77,12 @@ function Waitlist() {
       <div ref={glowRef} className="glow" aria-hidden="true" />
 
       <div className="hero-in relative z-10 flex w-full max-w-md flex-col items-center text-center">
+        <p
+          className="mb-4 text-2xl font-semibold text-foreground"
+          style={{ fontFamily: "var(--font-grotesk)" }}
+        >
+          hej
+        </p>
         <img
           src={mascotImg}
           alt="Bogi, the axolotl mascot"
