@@ -18,10 +18,11 @@ let package = Package(
             name: "BogiApp",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift")
-            ],
-            resources: [
-                .copy("Resources/mascot.png")
             ]
+            // mascot.png is bundled straight into the .app's Contents/Resources by
+            // Packaging/build-app.sh and loaded via Bundle.main. It is deliberately NOT an
+            // SPM resource: the generated Bundle.module accessor only searches the app root
+            // and the build machine's .build dir, so it fatalError'd on every other Mac.
         ),
         .testTarget(
             name: "BogiAppTests",

@@ -6,7 +6,7 @@
 # Without them, the script still builds + assembles the unsigned .app for local testing.
 set -euo pipefail
 cd "$(dirname "$0")/.."          # apps/macos/Bogi
-APP="build/Bogi.app"
+APP="build/Togi.app"             # bundle ships as Togi.app (executable inside stays Bogi)
 PKG="Packaging"
 
 echo "== build release =="
@@ -18,14 +18,19 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Bogi"
 cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
-# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) so
-# Bundle.module resolves at runtime inside the .app.
+# Copy any remaining SwiftPM resource bundles (e.g. GRDB's privacy-manifest bundle).
+# NOTE: the mascot is no longer an SPM resource — see below.
 for bundle in "$(dirname "$BIN")"/*.bundle; do
   [ -e "$bundle" ] || continue
   cp -R "$bundle" "$APP/Contents/MacOS/"
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
-# cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
+# The mascot is loaded via Bundle.main (see BogiTheme.swift), so it must live directly in
+# Contents/Resources — NOT inside an SPM resource bundle (whose Bundle.module accessor only
+# resolves on the build machine and crashed the app everywhere else).
+cp "Sources/BogiApp/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
+# App icon (referenced by CFBundleIconFile=Togi in Info.plist).
+cp "$PKG/Togi.icns" "$APP/Contents/Resources/Togi.icns"
 
 # Flat SwiftPM resource bundles (no Info.plist) can't be codesigned. Inject a minimal
 # Info.plist so the hardened-runtime sign pass accepts them.
@@ -51,14 +56,27 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
     --sign "$DEVELOPER_ID" "$APP"
   codesign --verify --strict --verbose=2 "$APP"
 
-  echo "== dmg =="
-  rm -f build/Bogi.dmg
-  hdiutil create -volname Bogi -srcfolder "$APP" -ov -format UDZO build/Bogi.dmg
+  echo "== dmg (styled: background + Applications drop-link) =="
+  DMG="build/Togi.dmg"
+  rm -f "$DMG"
+  # create-dmg styles the Finder window via AppleScript; --hdiutil-quiet keeps output tidy.
+  create-dmg \
+    --volname "Togi" \
+    --volicon "$PKG/Togi.icns" \
+    --background "$PKG/dmg-bg.png" \
+    --window-pos 200 120 \
+    --window-size 660 400 \
+    --icon-size 120 \
+    --icon "Togi.app" 165 190 \
+    --hide-extension "Togi.app" \
+    --app-drop-link 495 190 \
+    --no-internet-enable \
+    "$DMG" "$APP"
 
   if [ -n "${NOTARY_PROFILE:-}" ]; then
     echo "== notarize + staple =="
-    xcrun notarytool submit build/Bogi.dmg --keychain-profile "$NOTARY_PROFILE" --wait
-    xcrun stapler staple build/Bogi.dmg
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DMG"
     xcrun stapler staple "$APP"
   else
     echo "NOTARY_PROFILE unset — skipping notarization (DMG is signed but not notarized)."
