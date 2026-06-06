@@ -6,10 +6,11 @@
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { DOMAINS, DAY_START, Domain, JUST_ENDED, NOW, PLAN, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
+import { DOMAINS, DAY_START, Domain, JUST_ENDED, NOW, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
-import { addActivity, addProject, loadRealEntries, loadVocabulary, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
+import { parseTimeRange } from "../lib/planparse";
+import { addActivity, addProject, loadPlanLocal, loadRealEntries, loadVocabulary, savePlanLocal, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
 import { IcChevron, IcInsights, IcMic, IcSettings, IcToday } from "./icons";
 import { TodayCheckin, InsightBanner, CapContext, CheckinInput, CheckinResult } from "./Today";
 import { DayCalendar } from "./Calendar";
@@ -66,16 +67,20 @@ function blockCtxByName(name: string): CapContext {
 function selfCtx(label: string): CapContext {
   return { title: "Untracked time", domain: "Leisure", window: label, kind: "self", prompt: `Nothing was planned ${label} — what did you actually get up to?` };
 }
+function planCtx(): CapContext {
+  return { title: "Plan", domain: "Work", kind: "plan", prompt: 'What do you want to get done? Say it with a rough time — e.g. "edit the vlog for 2h in the afternoon".' };
+}
 
 export function TogiAppB() {
   const [tab, setTab] = useState("today");
   const [view, setView] = useState("real");
   const [session, setSession] = useState<any>(null);
-  const [capture, setCapture] = useState<{ context: CapContext } | null>(null);
+  const [capture, setCapture] = useState<{ context: CapContext; plan?: boolean } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [coach, setCoach] = useState<any>({ state: "pending", msg: null });
   const [banner, setBanner] = useState(true);
   const [real, setReal] = useState<RealEntry[]>(REAL_SEED);
+  const [plan, setPlan] = useState<PlanBlock[]>(PLAN);
   const [insight, setInsight] = useState<BannerInsight>(() => computeInsight(REAL_SEED));
   const [vocab, setVocab] = useState<Vocabulary>({ projects: [], activities: STARTER_ACTIVITIES });
   const ackTimer = useRef<any>(null);
@@ -85,6 +90,7 @@ export function TogiAppB() {
   useEffect(() => {
     (async () => {
       try { setVocab(await loadVocabulary()); } catch { /* keep starter */ }
+      try { const pl = loadPlanLocal(); if (pl.length) setPlan((cur) => { const ids = new Set(cur.map((x) => x.id)); return [...cur, ...pl.filter((x) => !ids.has(x.id))]; }); } catch { /* ignore */ }
       try {
         const rows = await loadRealEntries();
         if (rows.length) {
@@ -114,6 +120,7 @@ export function TogiAppB() {
   const startSession = (mode: string, arg?: any) => {
     if (mode === "self") setCapture({ context: selfCtx(typeof arg === "string" ? arg : "then") });
     else if (mode === "checkin") setCapture({ context: blockCtxByName(typeof arg === "string" ? arg : JUST_ENDED.block) });
+    else if (mode === "plan") setCapture({ context: planCtx(), plan: true });
     else openSession(mode, arg);
   };
 
@@ -152,6 +159,30 @@ export function TogiAppB() {
     return { status: "done" };
   }
 
+  // ---- PLANNING (adds a categorized block to the Plan timeline) ----
+  async function handlePlan(ctx: CapContext, input: CheckinInput): Promise<CheckinResult> {
+    let utterance = (input.text || "").trim();
+    if (input.clarifyAnswer && input.draftText) utterance = `${input.draftText}. ${input.clarifyAnswer}`.trim();
+    if (!utterance && input.blob) utterance = await transcribeAudio(input.blob);
+    if (!utterance) throw new Error("Didn’t catch that — try again, or type instead.");
+
+    const r = await categorizeText(utterance, { kind: "plan" }, vocab);
+    const tr = parseTimeRange(utterance, r.durationMin);
+    // coach for specificity: need a concrete time, and a confident activity
+    if (!input.clarifyAnswer && (!tr || r.confidence < 0.6)) {
+      return { status: "clarify", question: !tr ? "When, and for how long? Give me a concrete time." : (r.clarify_question || "What exactly? Be specific so I can check it later."), draftText: utterance };
+    }
+    const range = tr || { start: NOW, end: NOW + (r.durationMin || 60) };
+    const block: PlanBlock = { id: `plan-${Date.now()}`, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
+    const nextPlan = [...plan, block];
+    setPlan(nextPlan); setTab("today"); setView("plan");
+    savePlanLocal(nextPlan.filter((b) => b.id.startsWith("plan-")));
+    if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
+    if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
+    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(range.start)}–${fmt(range.end)}`);
+    return { status: "done" };
+  }
+
   const onAction = (action: string) => {
     if (action === "real") { setTab("today"); setView("real"); logged("On your Real timeline."); }
     if (action === "plan") { setTab("today"); setView("plan"); logged("Tomorrow’s taking shape — saved."); }
@@ -167,10 +198,10 @@ export function TogiAppB() {
         {tab === "today" && (
           <div className="content-today">
             {coach.state === "pending" && <TodayCheckin onSubmit={(input) => handleCapture(PINNED_CTX, input)} />}
-            {banner && <InsightBanner data={insight} onApply={() => { setTab("today"); openSession("plan"); }} onDismiss={() => setBanner(false)} />}
+            {banner && <InsightBanner data={insight} onApply={() => setCapture({ context: planCtx(), plan: true })} onDismiss={() => setBanner(false)} />}
             <div className="content-cal">
-              <DayCalendar view={view} setView={setView} real={real} density="regular"
-                onPlanDay={(d: any) => openSession("plan", d && d.d)}
+              <DayCalendar view={view} setView={setView} real={real} plan={plan} density="regular"
+                onPlanDay={() => setCapture({ context: planCtx(), plan: true })}
                 onSelfCheckin={(label: string) => setCapture({ context: selfCtx(label) })}
                 onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })} />
             </div>
@@ -181,7 +212,7 @@ export function TogiAppB() {
         {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage /></div></div>)}
       </main>
       {dockVisible && <TogiDock onOpenSession={startSession} coach={coach} />}
-      {capture && <TodayCheckin context={capture.context} onSubmit={(input) => handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
+      {capture && <TodayCheckin context={capture.context} onSubmit={(input) => capture.plan ? handlePlan(capture.context, input) : handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
       {session && <SessionOverlay mode={session.mode} ctx={session.ctx} onClose={() => setSession(null)} onAction={onAction} />}
     </div>
   );

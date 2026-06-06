@@ -55,10 +55,10 @@ function BlockEl({ top, height, domain, title, project, note, time, layer, tag, 
   );
 }
 
-function realStart(r: RealEntry): number { const p = r.slot ? PLAN.find((x) => x.id === r.slot) : null; return p ? p.start : (r.start ?? NOW); }
+function realStart(r: RealEntry, plan: any[]): number { const p = r.slot ? plan.find((x) => x.id === r.slot) : null; return p ? p.start : (r.start ?? NOW); }
 
-function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
-  const list = view === "plan" ? PLAN : [...real].sort((a: RealEntry, b: RealEntry) => realStart(a) - realStart(b));
+function MinimizedDay({ view, real, plan, onExpand, onTalkBlock }: any) {
+  const list = view === "plan" ? plan : [...real].sort((a: RealEntry, b: RealEntry) => realStart(a, plan) - realStart(b, plan));
   return (
     <div className="mini">
       <div className="mini-list">
@@ -66,7 +66,7 @@ function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
           const C = DOMAINS[b.domain];
           return (
             <button className="mini-row" key={b.id} onClick={() => onTalkBlock(b)}>
-              <span className="mini-time num">{fmt(view === "plan" ? b.start : realStart(b))}</span>
+              <span className="mini-time num">{fmt(view === "plan" ? b.start : realStart(b, plan))}</span>
               <span className="mini-rail" style={{ background: C.color }} />
               <span className="mini-title">{b.title}</span>
             </button>
@@ -91,14 +91,14 @@ function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
   );
 }
 
-function MultiDay({ span }: { span: string }) {
+function MultiDay({ span, plan }: { span: string; plan: any[] }) {
   const days = span === "3d" ? WEEK.filter((w) => ["Thu", "Fri", "Sat"].includes(w.d)) : WEEK;
   const ppm = 0.5;
   const H = (DAY_END - DAY_START) * ppm;
   const yOf = (m: number) => (m - DAY_START) * ppm;
   const labels: number[] = [];
   for (let m = DAY_START; m <= DAY_END; m += 120) labels.push(m);
-  const dayBlocks = (idx: number, isToday: boolean) => (isToday ? PLAN : PLAN.filter((_, k) => (k + idx) % 3 !== 0));
+  const dayBlocks = (idx: number, isToday: boolean) => (isToday ? plan : plan.filter((_, k) => (k + idx) % 3 !== 0));
   return (
     <div className="multi" style={{ height: H + 34 }}>
       <div className="multi-gutter" style={{ height: H }}>
@@ -124,7 +124,7 @@ function MultiDay({ span }: { span: string }) {
   );
 }
 
-export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelfCheckin, onTalkBlock, density }: any) {
+export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPlanDay, onSelfCheckin, onTalkBlock, density }: any) {
   const [expanded, setExpanded] = useState(true);
   const [span, setSpan] = useState("1d");
   const [listen, setListen] = useState<any>(null);
@@ -141,7 +141,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
   for (let m = DAY_START; m <= DAY_END; m += 60) hours.push(m);
 
   const gaps: { s: number; e: number }[] = [];
-  const sorted = [...PLAN].sort((a, b) => a.start - b.start);
+  const sorted = [...plan].sort((a: any, b: any) => a.start - b.start);
   for (let i = 0; i < sorted.length - 1; i++) { const g0 = sorted[i].end, g1 = sorted[i + 1].start; if (g1 - g0 >= 60) gaps.push({ s: g0, e: g1 }); }
 
   const segRef = useRef<HTMLDivElement>(null);
@@ -202,9 +202,9 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
       </div>
 
       {!expanded ? (
-        <MinimizedDay view={view} real={real} onExpand={() => setExpanded(true)} onTalkBlock={onTalkBlock} />
+        <MinimizedDay view={view} real={real} plan={plan} onExpand={() => setExpanded(true)} onTalkBlock={onTalkBlock} />
       ) : span !== "1d" ? (
-        <div className="cal-track-wrap"><MultiDay span={span} /></div>
+        <div className="cal-track-wrap"><MultiDay span={span} plan={plan} /></div>
       ) : (
         <div className="cal-track-wrap">
           <div className="cal-gutter" style={{ height: trackH }}>{hours.map((m) => <div key={m} className="cal-hr num" style={{ top: yOf(m) }}>{fmt(m)}</div>)}</div>
@@ -219,14 +219,14 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
 
             <div className="cal-stage" data-view={view}>
               <div className="plan-layer">
-                {PLAN.map((p) => (
+                {plan.map((p: any) => (
                   <BlockEl key={p.id} layer="plan" top={yOf(p.start)} height={yOf(p.end) - yOf(p.start)}
                     domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`} onClick={(e: any) => onBlock(e, p, p.title)} />
                 ))}
               </div>
               <div className="real-layer">
                 {real.map((r: RealEntry) => {
-                  const p = r.slot ? PLAN.find((x) => x.id === r.slot) : null;
+                  const p = r.slot ? plan.find((x: any) => x.id === r.slot) : null;
                   const s = p ? p.start : (r.start ?? NOW);
                   const e2 = p ? p.end : (r.end ?? NOW);
                   const tag = r.off ? "unplanned" : r.match ? "match" : "off";

@@ -4,7 +4,7 @@
 
    Supabase schema lives in CONNECTING.md (real_entries + projects + activities).
    ============================================================ */
-import { Domain, RealEntry, STARTER_ACTIVITIES } from "./data";
+import { Domain, PlanBlock, RealEntry, STARTER_ACTIVITIES } from "./data";
 import { ensureSession } from "./supabase";
 
 const LS_ENTRIES = "togi.real_entries.v2";
@@ -122,6 +122,11 @@ export async function addActivity(name: string) {
     try { const { data: { user } } = await sb.auth.getUser(); if (user) await sb.from("activities").upsert({ name, user_id: user.id }, { onConflict: "user_id,name", ignoreDuplicates: true }); } catch { /* ignore */ }
   }
 }
+
+/* ---------- Planned blocks (added during planning; local for now) ---------- */
+const LS_PLAN = "togi.plan.v1";
+export function loadPlanLocal(): PlanBlock[] { return lsGet<PlanBlock[]>(LS_PLAN, []); }
+export function savePlanLocal(blocks: PlanBlock[]) { lsSet(LS_PLAN, blocks); }
 
 export async function addProject(name: string) {
   if (!name) return;
