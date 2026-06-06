@@ -1,5 +1,6 @@
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import crypto from "node:crypto";
+import { buildConverseInput, parseConverseOutput } from "./converse.mjs";
 
 // Bogi backend — stateless proxy. Holds the Bedrock-invoking IAM role + (later) Supabase
 // service key + Stripe secret. Stores NO user data; the memory bank stays on the Mac.
@@ -30,16 +31,17 @@ export const handler = async (event) => {
 
 // --- Bedrock ---
 
-async function callBedrock({ system, messages, maxTokens = 1024, temperature = 0 }) {
-  const cmd = new ConverseCommand({
-    modelId: MODEL_ID,
-    system: system ? [{ text: system }] : undefined,
-    messages: (messages || []).map((m) => ({ role: m.role, content: [{ text: m.content }] })),
-    inferenceConfig: { maxTokens, temperature },
-  });
+async function callBedrock({ system, messages, tools, maxTokens = 1024, temperature = 0 }) {
+  const cmd = new ConverseCommand(
+    buildConverseInput({ modelId: MODEL_ID, system, messages, tools, maxTokens, temperature })
+  );
   const res = await bedrock.send(cmd);
-  const text = (res.output?.message?.content || []).map((c) => c.text || "").join("");
-  return { text, usage: res.usage };
+  return parseConverseOutput(res);
+}
+
+// Shape the /v1/infer JSON body. Exported for tests.
+export function buildInferResponse(parsed) {
+  return { text: parsed.text, content: parsed.content, stopReason: parsed.stopReason, usage: parsed.usage };
 }
 
 async function healthz() {
@@ -58,13 +60,14 @@ async function infer(event) {
 
   const body = parseBody(event);
   if (!body?.messages?.length) return json(400, { error: "messages_required" });
-  const { text, usage } = await callBedrock({
+  const parsed = await callBedrock({
     system: body.system,
     messages: body.messages,
+    tools: body.tools,
     maxTokens: Math.min(body.maxTokens || 1024, 8192),
     temperature: body.temperature ?? 0,
   });
-  return json(200, { text, usage });
+  return json(200, buildInferResponse(parsed));
 }
 
 // --- /v1/account/status ---
