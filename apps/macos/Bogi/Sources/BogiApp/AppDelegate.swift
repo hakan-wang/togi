@@ -173,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var calmScheduler: CalmScheduler?
     private var meetingReminders: MeetingReminderCoordinator?
     private var gateWindow: NSWindow?
+    private var gateHosting: NSHostingController<GateView>?
     private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
     private var gateObservation: AnyCancellable?
     private var mainExperienceStarted = false
@@ -234,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .unlocked:
             gateWindow?.orderOut(nil)
             gateWindow = nil
+            gateHosting = nil
             startMainExperienceIfNeeded()
         case .checking:
             // Initial launch shows a "checking" window; once the app is running, a transient
@@ -256,15 +258,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onRecheck: { [weak self] in Task { await self?.gate.refresh() } },
             onSignOut: { [weak self] in self?.gate.signOut() }
         )
-        if let win = gateWindow {
-            win.contentViewController = NSHostingController(rootView: view)
+        // Reuse a SINGLE hosting controller + window for the whole gate lifecycle, updating
+        // `rootView` as the state changes. Replacing `contentViewController` on every state
+        // change (and letting the hosting controller drive the window size as content height
+        // changed) caused an Auto Layout feedback loop — AppKit aborts with an uncaught
+        // NSGenericException ("more Update Constraints in Window passes than there are views").
+        // `sizingOptions = []` stops SwiftUI from resizing the window, and a fixed content size
+        // big enough for every gate state (login / paywall / blocked / checking) avoids resizing.
+        if let hosting = gateHosting {
+            hosting.rootView = view
         } else {
-            let win = NSWindow(contentViewController: NSHostingController(rootView: view))
+            let hosting = NSHostingController(rootView: view)
+            hosting.sizingOptions = []
+            let win = NSWindow(contentViewController: hosting)
             win.styleMask = [.titled]
             win.title = "Togi"
             win.isReleasedWhenClosed = false
+            win.setContentSize(NSSize(width: 360, height: 460))
             win.center()
             gateWindow = win
+            gateHosting = hosting
         }
         NSApp.activate(ignoringOtherApps: true)
         gateWindow?.makeKeyAndOrderFront(nil)

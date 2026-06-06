@@ -23,11 +23,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Bogi"
 cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
-# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) so
-# Bundle.module resolves at runtime inside the .app.
+# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) into
+# Contents/Resources ONLY — the standard, codesign-able location. BogiAsset.locateResourceBundle
+# searches Contents/Resources first, so a single copy here is enough. (We must NOT also drop them
+# in Contents/MacOS: a nested resource bundle there makes `codesign --deep` reject the app, and the
+# old SwiftPM `Bundle.module` accessor that looked at the .app root is no longer used — see
+# BogiTheme.swift, which avoids its dev-path-hardcoded fatalError that crashed shipped builds.)
 for bundle in "$(dirname "$BIN")"/*.bundle; do
   [ -e "$bundle" ] || continue
-  cp -R "$bundle" "$APP/Contents/MacOS/"
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
 # cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
@@ -66,7 +69,49 @@ create_dmg() {
   mkdir -p "$DMG_STAGE"
   cp -R "$APP" "$DMG_STAGE/"
   ln -s /Applications "$DMG_STAGE/Applications"
-  hdiutil create -volname Togi -srcfolder "$DMG_STAGE" -ov -format UDZO "$DMG"
+
+  # Build a read-WRITE DMG first so Finder can record a window layout (icon positions,
+  # window size, icon view), then convert to a compressed read-only DMG for distribution.
+  # A bare `hdiutil create … -format UDZO` (read-only) can't hold a layout, which is why
+  # the old DMG showed an unstyled, unarranged window.
+  RW_DMG="build/Togi-rw.dmg"
+  rm -f "$RW_DMG"
+  hdiutil create -volname Togi -srcfolder "$DMG_STAGE" -fs HFS+ \
+    -format UDRW -ov "$RW_DMG"
+
+  # Mount at the default /Volumes/Togi (NOT a custom mountpoint) so Finder can address the
+  # volume as `disk "Togi"` to save the layout. Capture the device node for a clean detach.
+  DEVICE="$(hdiutil attach "$RW_DMG" -noverify -noautoopen | grep -E '^/dev/' | head -1 | awk '{print $1}')"
+
+  # Arrange the window via Finder. Best-effort: if Finder scripting is unavailable (headless
+  # CI), the layout step is skipped but the DMG still ships with the app + Applications symlink.
+  osascript <<'APPLESCRIPT' || echo "(Finder layout skipped — DMG still valid)"
+on run
+  tell application "Finder"
+    tell disk "Togi"
+      open
+      set current view of container window to icon view
+      set toolbar visible of container window to false
+      set statusbar visible of container window to false
+      set the bounds of container window to {200, 120, 740, 480}
+      set theViewOptions to the icon view options of container window
+      set arrangement of theViewOptions to not arranged
+      set icon size of theViewOptions to 112
+      set position of item "Togi.app" of container window to {150, 180}
+      set position of item "Applications" of container window to {410, 180}
+      update without registering applications
+      delay 1
+      close
+    end tell
+  end tell
+end run
+APPLESCRIPT
+
+  sync
+  hdiutil detach "$DEVICE" -force || hdiutil detach "/Volumes/Togi" -force || true
+
+  hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -ov -o "$DMG"
+  rm -f "$RW_DMG"
   rm -rf "$DMG_STAGE"
 }
 
