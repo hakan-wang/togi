@@ -5,14 +5,34 @@
    ============================================================ */
 "use client";
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CATEGORIES, DOMAINS, SHORT_TERM_INSIGHTS } from "../lib/data";
-import { IcArrow, IcCheck, IcMic, IcSpark } from "./icons";
+import { IcArrow, IcCheck, IcClose, IcMic, IcSpark } from "./icons";
+import { computeStats, seedHistory } from "../lib/behavior";
+import { dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
+
+const FAMILY_COLOR: Record<string, string> = {
+  drift: "var(--cat-creative)", estimation: "var(--cat-errands)", distraction: "var(--cat-scroll)",
+  rhythm: "var(--cat-deepwork)", follow_through: "var(--cat-deepwork)", second_order: "var(--cat-health)",
+};
 
 export function InsightsPage({ onOpenSession }: any) {
   const [range, setRange] = useState("Week");
   const [filter, setFilter] = useState("All");
   const [applied, setApplied] = useState<Record<string, boolean>>({});
+  const [insights, setInsights] = useState<InsightRecord[]>([]);
+  const [loadingI, setLoadingI] = useState(false);
+
+  const runRefresh = async () => {
+    setLoadingI(true);
+    try {
+      const stats = computeStats(seedHistory());
+      const rows = await refreshInsights(stats, new Date().toISOString());
+      setInsights(surfaced(rows));
+    } finally { setLoadingI(false); }
+  };
+  // show memory immediately, then re-analyze when the tab opens (per the spec cadence)
+  useEffect(() => { setInsights(surfaced(loadMemory())); runRefresh(); }, []); // eslint-disable-line
   const ranges = ["Week", "Month", "3 months", "Year"];
   const cats = ["All", "Deep work", "Creative", "Scrolling", "Health", "Friends"];
 
@@ -25,23 +45,24 @@ export function InsightsPage({ onOpenSession }: any) {
   return (
     <div className="page-wide fade-up">
       <div className="pattern-head">
-        <span className="pattern-eyebrow"><IcSpark size={13} /> This week, Togi noticed</span>
+        <span className="pattern-eyebrow"><IcSpark size={13} /> {loadingI ? "Togi is looking…" : "Togi noticed"}</span>
         <span className="pattern-sub">Patterns you can’t see from the inside.</span>
+        <button className="ask-chip" style={{ marginLeft: "auto" }} onClick={runRefresh} disabled={loadingI}>{loadingI ? "Analyzing…" : "Refresh"}</button>
       </div>
       <div className="pattern-grid">
-        {SHORT_TERM_INSIGHTS.map((p) => {
-          const C = DOMAINS[p.domain];
-          const isOn = applied[p.id];
-          return (
-            <div className="pattern-card" key={p.id} style={{ ["--c" as any]: C.color }}>
-              <div className="pattern-metric"><span className="pattern-dot" style={{ background: C.color }} />{p.metric}</div>
-              <p className="pattern-text">{p.text}</p>
-              <button className={"pattern-apply" + (isOn ? " on" : "")} onClick={() => { setApplied((a) => ({ ...a, [p.id]: true })); onOpenSession("plan"); }}>
-                {isOn ? <><IcCheck size={14} /> Applied</> : <>Apply to planning <IcArrow size={14} /></>}
-              </button>
+        {(insights.length
+          ? insights.map((i) => ({ id: i.id, color: FAMILY_COLOR[i.family] || "var(--cat-deepwork)", metric: i.metric || i.family, statement: i.statement, suggestion: i.suggestion, dismissable: true }))
+          : SHORT_TERM_INSIGHTS.map((p) => ({ id: p.id, color: DOMAINS[p.domain].color, metric: p.metric, statement: p.text, suggestion: undefined as string | undefined, dismissable: false }))
+        ).map((c) => (
+          <div className="pattern-card" key={c.id} style={{ ["--c" as any]: c.color }}>
+            <div className="pattern-metric" style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
+              <span className="pattern-dot" style={{ background: c.color }} />{c.metric}
+              {c.dismissable && <button className="ib-x" title="Not true — forget this" style={{ marginLeft: "auto" }} onClick={() => setInsights(surfaced(dismiss(c.id)))}><IcClose size={12} /></button>}
             </div>
-          );
-        })}
+            <p className="pattern-text">{c.statement}</p>
+            <button className="pattern-apply" onClick={() => onOpenSession("plan")}>{c.suggestion || "Apply to planning"} <IcArrow size={14} /></button>
+          </div>
+        ))}
       </div>
 
       <div className="bank-section-label">The long view</div>
