@@ -51,4 +51,16 @@ final class SidecarClientTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertGreaterThanOrEqual(transport.startCount, 2)
     }
+
+    func testBackoffGrowsBetweenCrashes() async throws {
+        let transport = FakeTransport()
+        let client = SidecarClient(transport: transport, restartDelay: 0.01)
+        try client.start()
+        transport.simulateCrash()
+        try await Task.sleep(nanoseconds: 60_000_000)
+        let afterFirst = transport.startCount
+        transport.simulateCrash()
+        try await Task.sleep(nanoseconds: 60_000_000)
+        XCTAssertGreaterThan(transport.startCount, afterFirst)
+    }
 }

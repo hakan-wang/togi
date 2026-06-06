@@ -17,9 +17,11 @@ final class ProcessSidecarTransport: SidecarTransport {
     private let scriptURL: URL
     /// Mutable so the host can inject a freshly-fetched auth token before `start()`.
     var environment: [String: String]
-    private let process = Process()
-    private let stdinPipe = Pipe()
-    private let stdoutPipe = Pipe()
+    // Recreated fresh on every `start()`: a terminated `Process` cannot be re-run, so a
+    // restart after a crash needs new Process + pipe instances.
+    private var process = Process()
+    private var stdinPipe = Pipe()
+    private var stdoutPipe = Pipe()
     private var buffer = Data()
 
     init(nodeURL: URL, scriptURL: URL, environment: [String: String]) {
@@ -29,6 +31,10 @@ final class ProcessSidecarTransport: SidecarTransport {
     }
 
     func start() throws {
+        process = Process()
+        stdinPipe = Pipe()
+        stdoutPipe = Pipe()
+        buffer = Data()
         process.executableURL = nodeURL
         process.arguments = [scriptURL.path]
         process.environment = environment

@@ -8,6 +8,7 @@ final class SidecarClient {
     private var counter = 0
     private let lock = NSLock()
     private let restartDelay: TimeInterval
+    private var restartAttempts = 0
     /// Returns a JSON-encodable result for an action call (name, input) -> result.
     var actionHandler: ((_ name: String, _ input: [String: Any]) async -> [String: Any])?
 
@@ -50,6 +51,8 @@ final class SidecarClient {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let kind = obj["kind"] as? String else { return }
+        // A healthy sidecar that produces valid lines clears the restart backoff.
+        lock.lock(); restartAttempts = 0; lock.unlock()
         switch kind {
         case "result":
             guard let id = obj["id"] as? String else { return }
@@ -82,11 +85,13 @@ final class SidecarClient {
         lock.lock()
         let waiting = pending
         pending.removeAll()
+        restartAttempts += 1
+        let attempt = restartAttempts
         lock.unlock()
         for (_, cont) in waiting { cont.resume(throwing: SidecarError.terminated) }
 
-        // Restart after a capped backoff.
-        let delay = min(restartDelay, 30)
+        // Restart after an exponential, capped backoff. A successful decode resets the counter.
+        let delay = min(restartDelay * pow(2, Double(attempt - 1)), 30)
         DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
             try? self?.transport.start()
         }
