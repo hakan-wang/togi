@@ -1,0 +1,47 @@
+/* ============================================================
+   Bogi — Motion tokens
+   Smooth, gentle, Apple-like. Never snappy or harsh.
+   Respects Reduce Motion everywhere.
+   ============================================================ */
+
+:root {
+  /* ---- Easing ---- */
+  --ease-bogi: cubic-bezier(0.22, 1, 0.36, 1); /* @kind other */
+  --ease-soft: ease-in-out; /* @kind other */
+
+  /* ---- Durations ---- */
+  --dur-micro:   0.20s; /* @kind other */
+  --dur-default: 0.28s; /* @kind other */
+  --dur-settle:  0.50s; /* @kind other */
+  --dur-mood:    0.90s; /* @kind other */
+
+  /* ---- Spring-ish (for playful pops; approximated on web) ---- */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+}
+
+/* Signature gentle vertical hover (mascot / calm orb). */
+@keyframes bogi-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+
+.bg-bob {
+  animation: bogi-bob 5s var(--ease-soft) infinite;
+}
+
+/* Hero entrance: fade + rise + slight scale + de-blur. */
+@keyframes bogi-hero-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.985); filter: blur(6px); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);     filter: blur(0); }
+}
+
+.bg-hero-in {
+  animation: bogi-hero-in 0.95s var(--ease-bogi) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-bob,
+  .bg-hero-in {
+    animation: none !important;
+  }
+}

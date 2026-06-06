@@ -1,0 +1,86 @@
+/* ============================================================
+   Togi — the right zone (persona + reachable actions + reveals)
+   ============================================================ */
+.togi-zone {
+  width: 100%; height: 100%;
+  background: var(--togi-card); border: 1px solid var(--togi-line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-card);
+  padding: 30px 22px 22px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
+}
+
+/* persona */
+.togi-persona { display: flex; flex-direction: column; align-items: center; gap: 7px; border: none; background: none; cursor: pointer; padding-top: 8px; }
+.persona-orb { position: relative; width: 116px; height: 116px; display: grid; place-items: center; }
+.persona-pulse {
+  position: absolute; inset: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--togi-live) 26%, transparent), transparent 70%);
+  animation: persona-breathe 4.5s ease-in-out infinite;
+}
+@keyframes persona-breathe { 0%,100% { transform: scale(.92); opacity: .7; } 50% { transform: scale(1.06); opacity: 1; } }
+.persona-mascot { position: relative; z-index: 1; width: 98px; height: 98px; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(29,26,22,0.18)); }
+.persona-name { font-family: var(--font-display); font-size: 27px; line-height: 1; color: var(--togi-ink); }
+.persona-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--togi-muted); }
+.persona-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cat-health); animation: sx-blink 2s ease infinite; }
+
+/* Ask Togi — primary */
+.ask-togi {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--togi-ink); color: #fff; border: none; border-radius: 13px;
+  padding: 14px 16px; cursor: pointer; font-size: 14px; font-weight: 600;
+  transition: background .15s ease, transform .15s ease; box-shadow: var(--shadow-pill);
+}
+.ask-togi:hover { background: #34302a; transform: translateY(-1px); }
+.ask-togi-l { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
+.ask-togi .kbd { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.55); }
+
+/* two actions */
+.togi-actions { display: flex; gap: 10px; }
+.togi-actions button {
+  flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: #fff; border: 1px solid var(--togi-line); border-radius: 12px;
+  padding: 12px 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--togi-ink-2);
+  transition: background .14s ease, border-color .14s ease; white-space: nowrap;
+}
+.togi-actions button:hover { background: var(--togi-paper-2); border-color: var(--togi-line-2); }
+.togi-actions button svg { color: var(--togi-live); }
+
+/* reveals (insight + loose threads, hidden by default) */
+.togi-reveals { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.reveal-tab {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border: 1px solid var(--togi-line); border-radius: 12px; background: #fff; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--togi-ink); transition: background .14s ease, border-color .14s ease;
+}
+.reveal-tab:hover { background: var(--togi-paper-2); }
+.reveal-tab.on { border-color: var(--togi-line-2); background: var(--togi-paper-2); }
+.reveal-badge { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--togi-paper-2); color: var(--togi-muted); flex: 0 0 auto; }
+.reveal-badge.spark { background: var(--cat-social-t); color: var(--cat-social); }
+.reveal-label { flex: 1 1 auto; text-align: left; white-space: nowrap; }
+.reveal-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--togi-paper-2); color: var(--togi-muted); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+.reveal-count.warn { background: var(--cat-scroll); color: #fff; }
+.reveal-chev { color: var(--togi-faint); flex: 0 0 auto; transition: transform .2s var(--ease-bogi); }
+.reveal-tab.on .reveal-chev { transform: rotate(90deg); }
+.reveal-panel { padding: 6px 6px 6px; animation: togi-rise .2s var(--ease-bogi); }
+
+/* insight content */
+.insight-text { font-size: 13.5px; line-height: 1.5; color: var(--togi-ink-2); margin: 4px 6px 12px; text-wrap: pretty; }
+.insight-nudge {
+  display: inline-flex; align-items: center; gap: 8px; width: 100%; justify-content: space-between;
+  background: var(--togi-ink); color: #fff; border: none; border-radius: 10px;
+  padding: 10px 14px; cursor: pointer; font-size: 13px; font-weight: 600; text-align: left; transition: background .15s ease;
+}
+.insight-nudge:hover { background: #34302a; }
+
+/* threads */
+.thread { display: flex; align-items: flex-start; gap: 10px; padding: 11px 6px; border-top: 1px solid var(--togi-line-soft); }
+.thread:first-child { border-top: none; }
+.thread-body { flex: 1 1 auto; min-width: 0; }
+.thread-title { font-size: 13px; font-weight: 600; color: var(--togi-ink); }
+.thread-meta { font-size: 11px; color: var(--togi-muted); margin-top: 2px; }
+.thread-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.thread-btn { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--togi-line); background: #fff; cursor: pointer; color: var(--togi-muted); transition: all .14s ease; }
+.thread-btn.keep:hover { color: var(--cat-health); border-color: color-mix(in srgb, var(--cat-health) 45%, transparent); background: var(--cat-health-t); }
+.thread-btn.del:hover { color: var(--cat-scroll); border-color: color-mix(in srgb, var(--cat-scroll) 45%, transparent); background: var(--cat-scroll-t); }
+.threads-empty { display: flex; align-items: center; gap: 8px; padding: 12px 6px; font-size: 12.5px; color: var(--togi-muted); }
+.threads-empty svg { color: var(--cat-health); }
+.thread-toast { margin: 8px 6px 4px; padding: 8px 12px; border-radius: 9px; background: var(--togi-ink); color: #fff; font-size: 12px; text-align: center; animation: togi-rise .2s var(--ease-bogi); }

@@ -1,0 +1,364 @@
+/* ============================================================
+   Togi — "to sharpen"
+   A clean, editorial override of the Bogi design system.
+   Keeps the type / spacing / radii bones; drops the dreamy sky
+   gradient + heavy frost for warm paper, crisp white, hairlines.
+   Category colors do all the chromatic work on the calendar.
+   ============================================================ */
+
+:root {
+  /* ---- Re-point the DS primary onto Togi's restrained ink + signature blue ---- */
+  --togi-ink:        #1d1a16;   /* warm near-black, headings */
+  --togi-ink-2:      #3a3631;   /* strong body */
+  --togi-muted:      #78736c;   /* captions, sublabels */
+  --togi-faint:      #a6a09889; /* hairline text / ghost */
+  --togi-paper:      #f7f6f3;   /* page base */
+  --togi-paper-2:    #f1efea;   /* sunk wells, rails */
+  --togi-card:       #ffffff;   /* crisp card surface */
+  --togi-line:       rgba(29,26,22,0.09);   /* hairline border */
+  --togi-line-2:     rgba(29,26,22,0.14);   /* stronger hairline */
+  --togi-line-soft:  rgba(29,26,22,0.055);
+
+  /* Togi's one signature color — reserved for the live/voice state + focus */
+  --togi-live:       #2f6bf6;
+  --togi-live-soft:  #eaf1ff;
+
+  /* Override DS tokens so DS components inherit the Togi look */
+  --sky-accent:        var(--togi-ink);
+  --sky-accent-bright: #34302a;
+  --color-primary:        var(--togi-ink);
+  --color-primary-hover:  #34302a;
+  --gradient-pill:        linear-gradient(180deg, #34302a, var(--togi-ink));
+  --ink:    var(--togi-ink);
+  --muted:  var(--togi-muted);
+  --text-strong: var(--togi-ink);
+  --text-body:   var(--togi-ink-2);
+  --text-muted:  var(--togi-muted);
+  --page:        var(--togi-paper);
+  --surface-page: var(--togi-paper);
+  --surface-card: var(--togi-card);
+  --surface-reply: #ffffff;
+  --glass-fill:   rgba(255,255,255,0.92);
+  --glass-border: var(--togi-line);
+  --glass-border-soft: var(--togi-line-soft);
+  --glass-border-strong: var(--togi-line-2);
+  --glass-blur: blur(14px) saturate(1.05);
+  --glass-blur-thin: blur(10px) saturate(1.05);
+  --shadow-card: 0 1px 2px rgba(29,26,22,0.04), 0 12px 32px rgba(29,26,22,0.07);
+  --shadow-pill: 0 1px 2px rgba(29,26,22,0.18);
+  --shadow-pill-hover: 0 6px 18px rgba(29,26,22,0.20);
+
+  /* ---- Category system — refined, editorial, never neon ---- */
+  --cat-deepwork: #4c6fd0;  --cat-deepwork-t: #ecf0fb;
+  --cat-creative: #9159c9;  --cat-creative-t: #f4edfb;
+  --cat-admin:    #199e8b;  --cat-admin-t:    #e7f5f2;
+  --cat-health:   #3b9a57;  --cat-health-t:   #eaf5ed;
+  --cat-social:   #d98724;  --cat-social-t:   #faf0e1;
+  --cat-errands:  #b06a45;  --cat-errands-t:  #f6ede7;
+  --cat-leisure:  #d75a86;  --cat-leisure-t:  #fbecf1;
+  --cat-scroll:   #e0544a;  --cat-scroll-t:   #fbe9e7;
+  --cat-personal: #7e8893;  --cat-personal-t: #eef0f2;
+
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+}
+
+/* ============================================================  Reset / base  */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--togi-paper);
+  color: var(--togi-ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+#root { height: 100%; }
+button { font-family: inherit; }
+::selection { background: rgba(47,107,246,0.18); }
+
+.serif { font-family: var(--font-display); font-weight: 400; }
+.mono  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.num   { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* ============================================================  TogiMark — abstract coach presence  */
+.togi-mark { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; }
+.togi-mark-orb {
+  position: relative; z-index: 1; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(120% 120% at 32% 26%, #4f86ff, var(--togi-live) 64%, color-mix(in srgb, var(--togi-live) 70%, #1a3f8c));
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--togi-live) 36%, transparent), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.togi-mark-bars { display: flex; align-items: center; }
+.togi-mark-bars i { display: block; }
+@keyframes tm-wave {
+  0%, 100% { height: var(--tm-min); }
+  50%      { height: var(--tm-max); }
+}
+.togi-mark-pulse {
+  position: absolute; inset: -18%; border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--togi-live) 34%, transparent), transparent 70%);
+  animation: tm-breathe 3.4s ease-in-out infinite; z-index: 0;
+}
+@keyframes tm-breathe { 0%,100% { transform: scale(.86); opacity: .6; } 50% { transform: scale(1.12); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .togi-mark-bars i, .togi-mark-pulse { animation: none !important; }
+}
+
+/* ============================================================  App shell  */
+.togi-app {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  height: 100%;
+  min-height: 100%;
+  background: var(--togi-paper);
+}
+
+/* ---- Two-zone workspace (no rail) ---- */
+.togi-shell { position: relative; height: 100%; background: var(--togi-paper); }
+.workspace {
+  display: flex; gap: 22px; height: 100%;
+  padding: 22px 24px; box-sizing: border-box; align-items: stretch;
+}
+.workspace.swap { flex-direction: row-reverse; }
+.ws-cal { flex: 1 1 auto; min-width: 0; display: flex; }
+.ws-togi { flex: 0 0 344px; display: flex; }
+@media (max-width: 1080px) {
+  .workspace { gap: 16px; padding: 16px; }
+  .ws-togi { flex-basis: 300px; }
+}
+
+/* ---- Avatar menu (top-left, over the Togi panel) ---- */
+.avatar-menu { position: absolute; top: 26px; left: 32px; z-index: 60; }
+.avatar-btn {
+  padding: 3px; border-radius: 50%; border: 1px solid var(--togi-line);
+  background: #fff; cursor: pointer; box-shadow: 0 1px 3px rgba(29,26,22,0.08);
+  transition: box-shadow .15s ease, transform .15s ease; line-height: 0;
+}
+.avatar-btn:hover { box-shadow: 0 4px 12px rgba(29,26,22,0.14); }
+.avatar-btn.on { box-shadow: 0 0 0 2px var(--togi-live); }
+.avatar-pop {
+  position: absolute; top: 48px; left: 0; width: 244px;
+  background: #fff; border: 1px solid var(--togi-line); border-radius: 16px;
+  box-shadow: var(--shadow-card); padding: 8px; animation: togi-rise .16s var(--ease-bogi);
+}
+.avatar-pop-head { display: flex; align-items: center; gap: 11px; padding: 8px 8px 10px; }
+.avatar-nav { display: flex; flex-direction: column; gap: 1px; padding-top: 6px; }
+.avatar-item {
+  display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 9px;
+  border: none; background: none; cursor: pointer; width: 100%; text-align: left;
+  font-size: 13.5px; font-weight: 500; color: var(--togi-ink-2);
+  transition: background .14s ease;
+}
+.avatar-item:hover { background: rgba(29,26,22,0.045); }
+.avatar-item.active { background: var(--togi-paper-2); color: var(--togi-ink); font-weight: 600; }
+.avatar-item .ic { opacity: .82; }
+
+/* ---- Left nav rail ---- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 22px 16px;
+  border-right: 1px solid var(--togi-line);
+  background: linear-gradient(180deg, #fafaf8, #f5f4f0);
+}
+.rail-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 8px 22px;
+}
+.rail-brand .wordmark {
+  font-family: var(--font-display);
+  font-size: 28px; line-height: 1; color: var(--togi-ink);
+  letter-spacing: 0.01em;
+}
+.rail-brand .tagline {
+  font-size: 10.5px; color: var(--togi-muted); letter-spacing: 0.14em;
+  text-transform: uppercase; margin-top: 3px;
+}
+.rail-mascot { width: 34px; height: 34px; object-fit: contain;
+  filter: drop-shadow(0 3px 5px rgba(29,26,22,0.16)); }
+
+.cmd-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 2px 2px 4px; padding: 10px 12px; border-radius: 10px;
+  background: #fff; border: 1px solid var(--togi-line); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(29,26,22,0.05); transition: border-color .15s ease, box-shadow .15s ease;
+}
+.cmd-btn:hover { border-color: var(--togi-live); box-shadow: 0 2px 8px rgba(47,107,246,0.12); }
+.cmd-left { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--togi-ink); }
+.cmd-left svg { color: var(--togi-live); }
+.cmd-btn .kbd { font-family: var(--font-mono); font-size: 11px; color: var(--togi-faint); }
+
+.nav-section-label {
+  font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--togi-faint); padding: 16px 10px 7px; font-weight: 600;
+}
+.nav-flag { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--togi-live); }
+.rail-user-name { font-size: 13px; font-weight: 600; color: var(--togi-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-user-sub { font-size: 11px; color: var(--togi-muted); }
+
+.head-ask {
+  display: inline-flex; align-items: center; gap: 9px; padding: 8px 10px 8px 9px;
+  background: #fff; border: 1px solid var(--togi-line); border-radius: 999px;
+  cursor: pointer; box-shadow: 0 1px 2px rgba(29,26,22,0.05); font-size: 13px; font-weight: 600; color: var(--togi-ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.head-ask:hover { border-color: var(--togi-live); box-shadow: 0 3px 12px rgba(47,107,246,0.14); }
+.head-ask-mascot { width: 24px; height: 24px; object-fit: contain; }
+.head-ask .kbd { font-family: var(--font-mono); font-size: 11px; color: var(--togi-faint); }
+.nav-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 10px; border-radius: var(--r-xs);
+  color: var(--togi-ink-2); font-size: 14px; font-weight: 500;
+  background: none; border: none; width: 100%; text-align: left;
+  cursor: pointer; transition: background .15s ease, color .15s ease;
+}
+.nav-item:hover { background: rgba(29,26,22,0.045); }
+.nav-item.active { background: #ffffff; color: var(--togi-ink);
+  box-shadow: 0 1px 2px rgba(29,26,22,0.06), inset 0 0 0 1px var(--togi-line); }
+.nav-item .ic { width: 18px; height: 18px; flex: 0 0 auto; color: currentColor; opacity: .82; }
+.nav-item.active .ic { opacity: 1; }
+.nav-item .kbd {
+  margin-left: auto; font-family: var(--font-mono); font-size: 11px;
+  color: var(--togi-faint); }
+
+.rail-foot { margin-top: auto; padding-top: 16px; }
+.rail-user {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: var(--r-xs); cursor: pointer;
+}
+.rail-user:hover { background: rgba(29,26,22,0.045); }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
+  color: #fff; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700;
+  background: linear-gradient(135deg, #b9a589, #8d7a63);
+}
+
+/* ============================================================  Main surface  */
+.surface { overflow: auto; height: 100%; }
+.surface-inner {
+  max-width: 1240px; margin: 0 auto; padding: 30px 40px 64px;
+}
+
+/* ---- Page header ---- */
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; margin-bottom: 26px;
+}
+.page-head .eyebrow {
+  font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--togi-muted); font-weight: 600; margin-bottom: 7px; white-space: nowrap;
+}
+.page-head h1 {
+  font-family: var(--font-display); font-weight: 400;
+  font-size: 40px; line-height: 1.0; margin: 0; color: var(--togi-ink);
+  letter-spacing: 0.005em; white-space: nowrap;
+}
+.page-head h1 em { font-style: italic; }
+
+/* ---- Two-column main body ---- */
+.main-grid {
+  display: grid; grid-template-columns: 1fr 348px; gap: 26px;
+  align-items: start;
+}
+@media (max-width: 1180px) {
+  .main-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================  Card primitive  */
+.card {
+  background: var(--togi-card);
+  border: 1px solid var(--togi-line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+.card-pad { padding: 18px 20px; }
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--togi-line);
+}
+.card-title {
+  font-size: 13px; font-weight: 700; color: var(--togi-ink);
+  letter-spacing: 0.01em; display: flex; align-items: center; gap: 8px;
+  white-space: nowrap;
+}
+.card-sub { font-size: 12px; color: var(--togi-muted); }
+
+/* ============================================================  Segmented toggle (Plan / Actual)  */
+.seg {
+  display: inline-flex; padding: 3px; gap: 2px;
+  background: var(--togi-paper-2); border: 1px solid var(--togi-line);
+  border-radius: 999px; position: relative;
+}
+.seg button {
+  position: relative; z-index: 1;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
+  color: var(--togi-muted); padding: 7px 18px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: color .22s ease;
+}
+.seg button.on { color: var(--togi-ink); }
+.seg button .dot { width: 7px; height: 7px; border-radius: 50%; }
+.seg-thumb {
+  position: absolute; top: 3px; bottom: 3px; z-index: 0;
+  background: #fff; border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(29,26,22,0.12), inset 0 0 0 1px var(--togi-line);
+  transition: left .34s var(--ease-bogi), width .34s var(--ease-bogi);
+}
+
+/* ============================================================  Buttons (lightweight, when DS overkill)  */
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: 1px solid var(--togi-line);
+  border-radius: 999px; padding: 7px 13px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--togi-ink-2);
+  transition: background .15s ease, border-color .15s ease;
+}
+.btn-ghost:hover { background: rgba(29,26,22,0.04); border-color: var(--togi-line-2); }
+.btn-ghost.danger:hover { color: var(--cat-scroll); border-color: #e6a59e; background: #fdf0ee; }
+.icon-btn {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: 50%; border: 1px solid var(--togi-line); background: #fff;
+  cursor: pointer; color: var(--togi-ink-2); transition: background .15s ease;
+}
+.icon-btn:hover { background: rgba(29,26,22,0.04); }
+
+/* ============================================================  Category chip  */
+.cat-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--togi-ink-2);
+}
+.cat-swatch { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
+
+/* ============================================================  Misc  */
+.hairline { height: 1px; background: var(--togi-line); border: none; margin: 0; }
+.dim { color: var(--togi-muted); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+@keyframes togi-pulse-ring {
+  0%   { transform: scale(0.96); opacity: 0.55; }
+  70%  { transform: scale(1.5);  opacity: 0; }
+  100% { transform: scale(1.5);  opacity: 0; }
+}
+@keyframes togi-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Load-safe entrance: transform only, so content stays visible even if the
+   animation clock is paused (offscreen/background iframe). */
+@keyframes togi-rise {
+  from { transform: translateY(9px); }
+  to   { transform: translateY(0); }
+}
+.fade-up { animation: togi-rise .5s var(--ease-bogi); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001s !important; transition-duration: .04s !important; }
+}

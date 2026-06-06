@@ -1,0 +1,48 @@
+/* ============================================================
+   Bogi — Typography tokens
+   display -> serif headlines (Instrument Serif, italic for accents)
+   body    -> UI / body (Familjen Grotesk)
+   mono    -> times, meta, numeric readouts (JetBrains Mono, monospaced digits)
+   ============================================================ */
+
+:root {
+  /* ---- Families ---- */
+  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-body:    "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---- Weights ---- */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-heavy:    800;
+
+  /* ---- Type scale (from the SwiftUI semantic sizes) ---- */
+  --size-price:        34px; /* paywall price (display) */
+  --size-count:        30px; /* calm countdown number */
+  --size-title:        22px; /* screen titles / calm phase */
+  --size-heading:      19px; /* calm-stage headings */
+  --size-wordmark:     20px; /* 'togi' brand mark */
+  --size-section:      17px; /* section headers (.headline) */
+  --size-button:       15px; /* pill / soft button labels */
+  --size-body:         13px; /* chat messages, list rows */
+  --size-sub:          13px; /* feature lists, openers */
+  --size-caption:    11.5px; /* captions, meta, reassurance */
+  --size-icon:         12px; /* toolbar / icon-button glyphs */
+
+  /* ---- Line heights ---- */
+  --leading-tight:  1.1;
+  --leading-snug:   1.25;
+  --leading-body:   1.45;
+
+  /* ---- Numerics: always tabular for minute counts, times, quantities ---- */
+  --numeric: var(--font-mono);
+  --font-feature-numbers: "tnum" 1, "zero" 0;
+}
+
+/* Utility: monospaced digits for any number readout. */
+.bg-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

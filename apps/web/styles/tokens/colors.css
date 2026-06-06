@@ -1,0 +1,56 @@
+/* ============================================================
+   Bogi — Color tokens
+   Dreamy pastel sky + Apple frosted liquid-glass + soft plush.
+   Warm and cute, never corporate or cold.
+   ============================================================ */
+
+:root {
+  /* ---- Base palette ---- */
+  --sky-accent:       #0a88cc; /* primary sky-blue accent */
+  --sky-accent-bright:#2f9bd6; /* top of the pill gradient / hover brighten */
+  --ink:              #15110d; /* warm near-black, primary text */
+  --muted:            #5a5450; /* secondary text, captions, inactive */
+  --page:             #ecf7fe; /* page base / near-opaque reply fill */
+  --mascot-blue:      #a7cdd6; /* plush axolotl body + calm orb tint */
+  --shadow-blue:      #285078; /* the single app-wide shadow color */
+  --white:            #ffffff;
+
+  /* ---- Sky gradient stops (signature dreamy backdrop) ---- */
+  --sky-0: #94ccf3;
+  --sky-1: #b2defa;
+  --sky-2: #d4f0fe;
+  --sky-3: #f6f7e4;
+  --sky-4: #fff9e4;
+
+  /* ---- State colors (mood / progress) ---- */
+  --on-task:  #34c759; /* green  — on-task / followed through */
+  --off-task: #ff9500; /* orange — off-task / distracted */
+  --alert:    #ff3b30; /* red    — escalated nudge */
+  --track:    rgba(21, 17, 13, 0.10); /* quaternary empty bar track */
+
+  /* ---- Glass surfaces ---- */
+  --glass-fill:   rgba(255, 255, 255, 0.58); /* frosted surface fill */
+  --glass-border: rgba(255, 255, 255, 0.60); /* glass edge highlight */
+  --glass-border-strong: rgba(255, 255, 255, 0.75);
+  --glass-border-soft:   rgba(255, 255, 255, 0.45);
+
+  /* ============================================================
+     Semantic aliases — prefer these in components.
+     ============================================================ */
+  --color-primary:        var(--sky-accent);
+  --color-primary-hover:  var(--sky-accent-bright);
+  --on-primary:           var(--white);
+
+  --text-strong:   var(--ink);                      /* headings full strength */
+  --text-body:     rgba(21, 17, 13, 0.82);          /* soft heading / body */
+  --text-muted:    var(--muted);                    /* captions, sublabels */
+  --text-on-fill:  var(--white);
+
+  --surface-page:  var(--page);
+  --surface-card:  var(--glass-fill);
+  --surface-reply: rgba(236, 247, 254, 0.92);       /* near-opaque coach bubble */
+  --surface-solid: var(--white);
+
+  --border-glass:  var(--glass-border);
+  --border-hairline: rgba(21, 17, 13, 0.08);
+}

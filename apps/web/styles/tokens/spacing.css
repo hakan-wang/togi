@@ -1,0 +1,55 @@
+/* ============================================================
+   Bogi — Spacing, radii & sizing tokens
+   Continuous (squircle) corners everywhere, never circular.
+   ============================================================ */
+
+:root {
+  /* ---- Spacing scale (raw values used in the app) ---- */
+  --space-2:  2px;
+  --space-4:  4px;
+  --space-6:  6px;
+  --space-7:  7px;
+  --space-8:  8px;
+  --space-9:  9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-15: 15px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-26: 26px;
+  --space-28: 28px;
+
+  /* ---- Semantic stack gaps ---- */
+  --gap-tight:       6px;
+  --gap-default:     8px;
+  --gap-comfortable: 10px;
+  --gap-section:     12px;
+  --gap-loose:       16px;
+  --gap-screen:      20px;
+
+  /* ---- Card padding ---- */
+  --pad-compact: 14px;
+  --pad-default: 16px;
+  --pad-screen:  26px;
+  --pad-auth:    28px;
+
+  /* ---- Radii (continuous / squircle corners) ---- */
+  --radius-opener: 10px;
+  --radius-bubble: 14px;
+  --radius-card:   24px;
+  --radius-glass:  30px;
+  --radius-overlay:30px;
+  --radius-pill:   999px;   /* capsule */
+  --radius-circle: 50%;
+
+  /* ---- Hit targets ---- */
+  --hit-icon: 26px;
+  --hit-send: 28px;
+
+  /* ---- Component sizes ---- */
+  --panel-width:  420px;
+  --mascot-size:  108px;
+}

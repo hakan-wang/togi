@@ -1,0 +1,71 @@
+/* ============================================================
+   Togi — secondary page styles
+   ============================================================ */
+.page-narrow { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.page-wide { display: flex; flex-direction: column; gap: 18px; }
+
+/* ---- Agenda list ---- */
+.agenda { display: flex; flex-direction: column; }
+.ag-row { display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-top: 1px solid var(--togi-line-soft); }
+.ag-row:first-child { border-top: none; }
+.ag-time { font-size: 12px; color: var(--togi-muted); width: 42px; flex: 0 0 42px; }
+.ag-rail { width: 3px; height: 30px; border-radius: 2px; flex: 0 0 3px; }
+.ag-body { flex: 1 1 auto; min-width: 0; }
+.ag-title { font-size: 14px; font-weight: 600; color: var(--togi-ink); display: flex; align-items: center; gap: 8px; }
+.ag-ok { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--cat-health-t); color: var(--cat-health); }
+.ag-meta { font-size: 11.5px; color: var(--togi-muted); margin-top: 2px; }
+.ag-row.leak { background: var(--cat-scroll-t); }
+
+/* ---- Plan CTA ---- */
+.cta-card { padding: 26px 28px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: linear-gradient(135deg, #fff, #faf9f6); }
+.cta-eyebrow { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--togi-muted); font-weight: 600; margin-bottom: 10px; white-space: nowrap; }
+.cta-h { font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.12; margin: 0; color: var(--togi-ink); }
+.cta-h em { font-style: italic; }
+.cta-p { font-size: 13.5px; color: var(--togi-muted); margin: 12px 0 0; max-width: 340px; line-height: 1.5; }
+.cta-btn { display: inline-flex; align-items: center; gap: 9px; background: var(--togi-ink); color: #fff; border: none; border-radius: 12px; padding: 14px 20px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; flex: 0 0 auto; transition: background .15s ease, transform .15s ease; }
+.cta-btn:hover { background: #34302a; transform: translateY(-1px); }
+
+/* ---- Actual stats ---- */
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.stat { padding: 20px; }
+.stat-n { font-size: 30px; font-weight: 700; color: var(--togi-ink); line-height: 1; letter-spacing: -.02em; }
+.stat-l { font-size: 12px; color: var(--togi-muted); margin-top: 8px; }
+
+/* ---- Insights ---- */
+.ask-card { padding: 18px 20px 16px; }
+.ask-top { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.ask-label { font-size: 13px; font-weight: 700; color: var(--togi-ink); }
+.ask-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; background: var(--togi-paper); border: 1px solid var(--togi-line); border-radius: 12px; padding: 13px 14px; cursor: text; transition: border-color .15s ease; }
+.ask-box:hover { border-color: var(--togi-live); }
+.ask-placeholder { font-size: 13.5px; color: var(--togi-muted); font-style: italic; text-align: left; }
+.ask-go { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--togi-live); color: #fff; flex: 0 0 auto; }
+.ask-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ask-chip { background: #fff; border: 1px solid var(--togi-line); border-radius: 999px; padding: 7px 13px; font-size: 12.5px; font-weight: 500; color: var(--togi-ink-2); cursor: pointer; transition: all .14s ease; }
+.ask-chip:hover { background: var(--togi-live-soft); border-color: color-mix(in srgb, var(--togi-live) 35%, transparent); }
+
+.seg-mini { display: inline-flex; gap: 2px; background: var(--togi-paper-2); border: 1px solid var(--togi-line); border-radius: 999px; padding: 3px; }
+.seg-mini button { border: none; background: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--togi-muted); padding: 5px 12px; border-radius: 999px; font-family: var(--font-body); white-space: nowrap; }
+.seg-mini button.on { background: #fff; color: var(--togi-ink); box-shadow: 0 1px 2px rgba(29,26,22,.1); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 20px; border-bottom: 1px solid var(--togi-line); }
+.filter-chip { background: #fff; border: 1px solid var(--togi-line); border-radius: 999px; padding: 6px 13px; font-size: 12px; font-weight: 600; color: var(--togi-muted); cursor: pointer; transition: all .14s ease; }
+.filter-chip.on { background: var(--togi-ink); color: #fff; border-color: var(--togi-ink); }
+
+.bank-chart { display: flex; align-items: flex-end; gap: 14px; padding: 28px 24px 18px; height: 220px; }
+.bank-col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; transition: opacity .2s ease; }
+.bank-col.dim-col { opacity: .22; }
+.bank-val { font-size: 11px; color: var(--togi-muted); font-weight: 600; }
+.bank-bar { width: 100%; max-width: 46px; border-radius: 7px 7px 3px 3px; transition: height .5s var(--ease-bogi); }
+.bank-note { display: flex; align-items: flex-start; gap: 8px; padding: 14px 20px 18px; font-size: 12.5px; color: var(--togi-muted); border-top: 1px solid var(--togi-line); }
+.bank-note strong { color: var(--togi-ink); }
+.bank-note svg { color: var(--cat-social); flex: 0 0 auto; margin-top: 2px; }
+
+/* ---- Settings ---- */
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 20px; }
+.set-title { font-size: 14px; font-weight: 600; color: var(--togi-ink); }
+.set-sub { font-size: 12px; color: var(--togi-muted); margin-top: 3px; max-width: 460px; line-height: 1.45; }
+.toggle { width: 42px; height: 25px; border-radius: 999px; border: none; background: var(--togi-line-2); cursor: pointer; position: relative; flex: 0 0 auto; transition: background .2s ease; padding: 0; }
+.toggle.on { background: var(--cat-health); }
+.toggle-knob { position: absolute; top: 3px; left: 3px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(29,26,22,.25); transition: left .2s var(--ease-bogi); }
+.toggle.on .toggle-knob { left: 20px; }
+.set-account { display: flex; align-items: center; gap: 14px; padding: 18px 20px; }
+.set-account > div:nth-child(2) { flex: 1 1 auto; }
