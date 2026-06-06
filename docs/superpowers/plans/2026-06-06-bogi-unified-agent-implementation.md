@@ -1447,6 +1447,102 @@ git add apps/macos/Bogi/Packaging/build-app.sh apps/macos/Bogi/Packaging/Bogi.en
 git commit -m "build(app): embed + sign Node sidecar in the app bundle"
 ```
 
+## Task B8: Sidecar crash auto-restart with backoff
+
+**Files:**
+- Modify: `apps/macos/Bogi/Sources/BogiApp/Infrastructure/Sidecar/SidecarTransport.swift`
+- Modify: `apps/macos/Bogi/Sources/BogiApp/Infrastructure/Sidecar/SidecarClient.swift`
+- Test: `apps/macos/Bogi/Tests/BogiAppTests/SidecarClientTests.swift`
+
+Spec §9 requires the sidecar to restart on crash with backoff. When the transport detects the child process exited, it notifies the client; the client fails any in-flight requests (so awaiting callers get a retryable error rather than hanging) and restarts the transport after a capped backoff delay.
+
+- [ ] **Step 1: Add a termination callback to the transport protocol** — in `SidecarTransport.swift`:
+
+```swift
+protocol SidecarTransport: AnyObject {
+    var onLine: ((String) -> Void)? { get set }
+    var onTerminate: (() -> Void)? { get set }
+    func send(_ line: String)
+    func start() throws
+    func stop()
+}
+```
+
+In `ProcessSidecarTransport`, add `var onTerminate: (() -> Void)?` and set `process.terminationHandler = { [weak self] _ in self?.onTerminate?() }` inside `start()` before `try process.run()`. In `stop()`, set `process.terminationHandler = nil` before terminating so a deliberate stop does not trigger a restart.
+
+- [ ] **Step 2: Write the failing test** — append to `SidecarClientTests.swift`. Extend `FakeTransport` with `var onTerminate: (() -> Void)?`, a `private(set) var startCount = 0` incremented in `start()`, and a `func simulateCrash() { onTerminate?() }`.
+
+```swift
+func testCrashFailsPendingAndRestarts() async throws {
+    let transport = FakeTransport()
+    transport.autoReply = { _ in nil }  // never replies; we will crash instead
+    let client = SidecarClient(transport: transport, restartDelay: 0)
+    try client.start()
+    XCTAssertEqual(transport.startCount, 1)
+
+    let task = Task { try await client.chat("hi", threadId: "t1") }
+    // Give the request a moment to register, then crash.
+    try await Task.sleep(nanoseconds: 50_000_000)
+    transport.simulateCrash()
+
+    do { _ = try await task.value; XCTFail("expected failure") }
+    catch { /* pending request failed as expected */ }
+
+    // Backoff is 0, so a restart should have happened.
+    try await Task.sleep(nanoseconds: 50_000_000)
+    XCTAssertGreaterThanOrEqual(transport.startCount, 2)
+}
+```
+
+- [ ] **Step 2b: Add `onTerminate` to the existing `FakeTransport`** so the suite still compiles. Update the `FakeTransport` declared earlier in the file to include the new protocol member and the `startCount`/`simulateCrash` helpers.
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `cd apps/macos/Bogi && swift test --filter SidecarClientTests/testCrashFailsPendingAndRestarts`
+Expected: FAIL — `SidecarClient` has no `restartDelay:` initializer and does not restart.
+
+- [ ] **Step 4: Implement restart in `SidecarClient`** — add the delay + termination wiring:
+
+```swift
+    private let restartDelay: TimeInterval
+
+    init(transport: SidecarTransport, restartDelay: TimeInterval = 1.0) {
+        self.transport = transport
+        self.restartDelay = restartDelay
+        self.transport.onLine = { [weak self] line in self?.handle(line) }
+        self.transport.onTerminate = { [weak self] in self?.handleTermination() }
+    }
+
+    private func handleTermination() {
+        // Fail all in-flight requests so callers do not hang.
+        lock.lock()
+        let waiting = pending
+        pending.removeAll()
+        lock.unlock()
+        for (_, cont) in waiting { cont.resume(throwing: SidecarError.terminated) }
+
+        // Restart after a capped backoff.
+        let delay = min(restartDelay, 30)
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            try? self?.transport.start()
+        }
+    }
+```
+
+Add `case terminated` to `SidecarError`. Set `transport.onTerminate` was already assigned in `init`.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `cd apps/macos/Bogi && swift test --filter SidecarClientTests`
+Expected: PASS (both the original chat test and the new crash test).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/macos/Bogi/Sources/BogiApp/Infrastructure/Sidecar/SidecarTransport.swift apps/macos/Bogi/Sources/BogiApp/Infrastructure/Sidecar/SidecarClient.swift apps/macos/Bogi/Tests/BogiAppTests/SidecarClientTests.swift
+git commit -m "feat(app): restart sidecar on crash with backoff, fail pending requests"
+```
+
 ---
 
 # PHASE C — Read tools + Coach migration
