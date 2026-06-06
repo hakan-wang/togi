@@ -12,16 +12,13 @@ struct JudgeInput {
 /// shape of what we send the LLM is unit-testable.
 enum JudgePrompt {
     static let system = """
-    You are Bogi's activity judge. You receive ~5 minutes of a user's on-screen activity \
-    and the calendar block they planned. Return STRICT JSON only. \
+    You are Bogi's activity segmenter. You receive ~5 minutes of a user's on-screen activity \
+    (the focused window is marked) and the calendar block they planned. Return STRICT JSON only. \
     1) Segment activity into time segments each labeled category, sub_category, sub_sub \
     (short concrete description) with minutes. \
     2) Judge on_task: does the dominant activity match the planned block's intent? \
-    3) Decide a nudge only if sustainedly off-task vs plan; if on-task or no plan, \
-    should=false. When you do nudge, write the message in a kind, supportive voice: \
-    be specific and honest about the drift, but gentle and encouraging, never harsh or \
-    preachy, and frame it as a small nudge back toward the plan. \
-    Never use em-dashes in the message; use commas, periods, or parentheses instead.
+    Always set the should field of the nudge object to false; that decision is made elsewhere. \
+    Never use em-dashes.
     """
 
     // Expected output JSON shape (strict, no prose):

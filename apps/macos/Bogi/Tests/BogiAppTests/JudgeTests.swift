@@ -135,4 +135,11 @@ final class JudgeTests: XCTestCase {
         let json = JudgePrompt.userJSON(input)
         XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
     }
+
+    func testSegmentationPromptIsSegmentationOnly() {
+        XCTAssertTrue(JudgePrompt.system.contains("segmenter"),
+                      "prompt should describe a segmenter, not a nudger")
+        XCTAssertFalse(JudgePrompt.system.lowercased().contains("preachy"),
+                       "old nudge-wording should be gone")
+    }
 }
