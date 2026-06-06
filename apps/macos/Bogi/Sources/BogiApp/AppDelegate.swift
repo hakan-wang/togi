@@ -210,11 +210,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyGateState(_ state: GateState) {
-        if state == .unlocked {
+        switch state {
+        case .unlocked:
             gateWindow?.orderOut(nil)
             gateWindow = nil
             startMainExperienceIfNeeded()
-        } else {
+        case .checking:
+            // Initial launch shows a "checking" window; once the app is running, a transient
+            // re-check (e.g. on activation) must not flash a window over the live UI.
+            if !mainExperienceStarted { showGateWindow(for: .checking) }
+        case .needsLogin, .needsSubscription, .blocked:
             showGateWindow(for: state)
         }
     }
@@ -235,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             win.contentViewController = NSHostingController(rootView: view)
         } else {
             let win = NSWindow(contentViewController: NSHostingController(rootView: view))
-            win.styleMask = [.titled, .closable]
+            win.styleMask = [.titled]
             win.title = "Togi"
             win.isReleasedWhenClosed = false
             win.center()
