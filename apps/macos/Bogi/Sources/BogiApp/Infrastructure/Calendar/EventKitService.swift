@@ -16,7 +16,7 @@ final class EventKitService {
     /// Calendar Bogi writes its own blocks into. nil → use the store's default calendar.
     private let bogiCalendarTitle: String
 
-    init(store: EKEventStore = EKEventStore(), bogiCalendarTitle: String = "Bogi") {
+    init(store: EKEventStore = EKEventStore(), bogiCalendarTitle: String = "Togi") {
         self.store = store
         self.bogiCalendarTitle = bogiCalendarTitle
     }

@@ -47,6 +47,10 @@ final class AppState: ObservableObject {
     var runJudgeNow: (() -> Void)?
     /// Wired by the AppDelegate to show/hide the mascot panel when the preference flips.
     var onMascotVisibilityChanged: ((Bool) -> Void)?
+    var startCalm: (() -> Void)?
+    var startCalmOffer: (() -> Void)?
+    /// Demo hook: set Togi's wellbeing 0…100 to preview the thrive/wilt states live.
+    var setVitalityDemo: ((Double) -> Void)?
 
     /// Set by the AppDelegate after launch; drives the Calendars settings UI.
     @Published var calendarSync: CalendarSyncCoordinator?
@@ -145,6 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let presenter = NudgePresenter()
     private var coordinator: JudgeCoordinator?
     private var companion: CompanionPanel?
+    private var calm: CalmPanel?
+    private var calmScheduler: CalmScheduler?
 
     override init() {
         let db: DatabaseService
@@ -163,6 +169,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // Demo hook: launch straight into the calm overlay for screenshots, skipping the
+        // capture loop and coordinator. BOGI_SHOW_CALM = 1|breathe|offer|intent.
+        if let mode = ProcessInfo.processInfo.environment["BOGI_SHOW_CALM"] {
+            switch mode {
+            case "offer":  showCalm(.offer)
+            case "intent": showCalm(.intent(app: "tiktok"))
+            default:       showCalm(.breathe)
+            }
+            return
+        }
+
+        // Demo hook: show the mascot with the companion chat already open, for screenshots.
+        // Skips the capture loop and coordinator. Set BOGI_SHOW_COMPANION=1.
+        if ProcessInfo.processInfo.environment["BOGI_SHOW_COMPANION"] == "1" {
+            let mascot = MascotPanel()
+            mascot.onActivate = { [weak self] in self?.toggleCompanion() }
+            mascot.show()
+            self.mascot = mascot
+            showCompanion()
+            return
+        }
 
         if appState.capture.permissionState != .granted {
             appState.capture.requestPermission()
@@ -238,10 +266,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         calendarSync.start()
         appState.calendarSync = calendarSync
+
+        appState.startCalm = { [weak self] in self?.showCalm() }
+        appState.startCalmOffer = { [weak self] in self?.showCalmOffer() }
+        appState.setVitalityDemo = { [weak self] value in self?.mascot?.viewModel.setVitality(value) }
+
+        // Proactive, benign nudge: after a long unbroken stretch, Togi offers a breath.
+        // Time-on-task only — no emotion guessing. BOGI_CALM_NUDGE_SECS overrides for demos.
+        let nudgeSecs = Double(ProcessInfo.processInfo.environment["BOGI_CALM_NUDGE_SECS"] ?? "") ?? (50 * 60)
+        let scheduler = CalmScheduler(
+            interval: nudgeSecs,
+            isPaused: { [weak self] in self?.appState.capturePaused ?? true },
+            onNudge: { [weak self] in self?.showCalmOffer() }
+        )
+        scheduler.start()
+        calmScheduler = scheduler
     }
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
         guard let mascot else { return }
+        // Wellbeing rides the real loop: each read nudges Togi toward thriving (on-task)
+        // or wilting (off-task). The body's look follows in MascotView.
+        mascot.viewModel.nudgeVitality(onTask: onTask)
         if decision.show {
             // Auto-reappear even when hidden, so a real nudge still reaches the user.
             mascot.show()
@@ -257,11 +303,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func companionPanel() -> CompanionPanel {
         if let companion { return companion }
         let state = appState
-        let panel = CompanionPanel {
+        // Demo hook: BOGI_DEMO_CHAT=1 opens with a sample conversation so the grown,
+        // scrolling card can be screenshotted. Empty otherwise.
+        let seed: [(role: String, text: String)] = ProcessInfo.processInfo.environment["BOGI_DEMO_CHAT"] == "1" ? [
+            ("user", "how am i doing today?"),
+            ("coach", "not great. 2h 41m logged and only 38% of it was on task. social ate 47 minutes you never planned for."),
+            ("user", "what should i do about it?"),
+            ("coach", "close the social tabs, set a 25-minute timer, and finish the deck you opened at 9am and walked away from. tell me when it's done."),
+        ] : []
+        let panel = CompanionPanel { maxContentHeight, reportHeight in
             CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
                 ask: { question, onToken in try await state.coach.ask(question, onToken: onToken) },
-                onClose: { [weak self] in self?.companion?.orderOut(nil) }
+                suggest: {
+                    CoachService.buildSuggestions(
+                        insight: state.insights.insight(for: .day, containing: Date()),
+                        goals: state.goals.all()
+                    )
+                },
+                maxContentHeight: maxContentHeight,
+                onHeightChange: reportHeight,
+                onSettings: { AppDelegate.openSettings() },
+                onClose: { [weak self] in self?.companion?.orderOut(nil) },
+                seedMessages: seed
             )
             .environmentObject(state)
         }
@@ -271,6 +335,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showCompanion() { companionPanel().show() }
     private func toggleCompanion() { companionPanel().toggle() }
+
+    private func showCalm(_ start: CalmStart = .breathe) {
+        calm?.orderOut(nil)
+        let panel = CalmPanel {
+            CalmView(
+                start: start,
+                onOpen: { [weak self] app in self?.openGatedApp(app) },
+                onDone: { [weak self] in self?.calm?.hide() }
+            )
+        }
+        calm = panel
+        calmScheduler?.noteBreath()
+        panel.show()
+    }
+
+    private func showCalmOffer() { showCalm(.offer) }
+
+    private func openGatedApp(_ app: String) {
+        calm?.hide()
+        if app.lowercased().contains("tiktok"), let url = URL(string: "https://www.tiktok.com") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 
     private static func openSettings() {
         if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
