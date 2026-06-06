@@ -10,26 +10,19 @@ enum MascotMood {
 }
 
 /// Cosmetic mapping from `vitality` (0…100) to how the mascot body reads. Pure function,
-/// no state. Mirrors the web vitality demo: full of colour and lift when thriving, then
-/// desaturated, grey, slumped and sluggish when neglected. Never "dead" — the floor still
-/// gently bobs, and it always recovers.
+/// no state. One signal, one colour shift: Togi stays baby-blue when thriving and flushes
+/// toward a deep red the more unproductive (lower vitality) it gets. The plush shading is
+/// preserved — we only recolour, never desaturate or slump it.
 struct VitalityLook {
-    let saturation: Double
-    let grayscale: Double
-    let scale: CGFloat
-    let droopY: CGFloat        // sinks down when low, lifts a touch when high
-    let bobDistance: CGFloat
-    let bobDuration: Double
+    /// 0 = thriving (baby-blue) … 1 = neglected (deep red).
+    let redness: Double
+    /// Eased strength of the red overlay — ramps in a touch faster than linear.
+    let washOpacity: Double
 
     init(_ vitality: Double) {
         let v = Swift.max(0, Swift.min(100, vitality))
-        let t = v / 100
-        saturation  = 0.3 + 0.9 * t
-        grayscale   = Swift.max(0, (36 - v) / 36 * 0.45)
-        scale       = CGFloat(0.95 + 0.10 * t)
-        droopY      = CGFloat(9 - 12 * t)
-        bobDistance = CGFloat(4 + 6 * t)
-        bobDuration = 4.6 - 2.2 * t
+        redness = (100 - v) / 100
+        washOpacity = pow(redness, 0.85)
     }
 }
 
@@ -44,8 +37,12 @@ final class MascotViewModel: ObservableObject {
     @Published var escalationLevel: Int
     /// Togi's wellbeing, 0 (neglected) … 100 (thriving). Climbs when the user follows
     /// through (on-task), drifts down when off-task or idle. Drives the body's look via
-    /// `VitalityLook`: alive and saturated up high, drained and grey down low.
+    /// `VitalityLook`: baby-blue up high, flushing toward deep red down low.
     @Published var vitality: Double
+    /// Live mic input level (0…1) while the user talks to Togi, and whether a voice turn is
+    /// recording. Drives the reactive glow behind the axolotl; pushed by the owner.
+    @Published var voiceLevel: Float = 0
+    @Published var voiceActive: Bool = false
 
     init(mood: MascotMood = .idle,
          bubbleText: String? = nil,

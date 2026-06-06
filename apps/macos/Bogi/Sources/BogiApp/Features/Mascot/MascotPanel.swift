@@ -20,7 +20,7 @@ final class MascotPanel: NSPanel {
     init(viewModel: MascotViewModel? = nil) {
         self.viewModel = viewModel ?? MascotViewModel()
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 172, height: 184),
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 220),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -29,7 +29,7 @@ final class MascotPanel: NSPanel {
         level = .floating
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
+        hasShadow = false                   // no boxy window shadow; the mascot casts its own soft float shadow
         isMovableByWindowBackground = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
@@ -38,14 +38,18 @@ final class MascotPanel: NSPanel {
         let root = MascotView(viewModel: self.viewModel, onActivate: { [weak self] in
             self?.onActivate?()
         })
-        contentView = NSHostingView(rootView: root)
+        let host = NSHostingView(rootView: root)
+        host.wantsLayer = true
+        host.layer?.masksToBounds = false   // let the voice aura glow past the content box
+        host.clipsToBounds = false
+        contentView = host
     }
 
     func show() {
         // Bottom-right of the main screen as a default resting spot.
         if let screen = NSScreen.main {
             let frame = screen.visibleFrame
-            setFrameOrigin(NSPoint(x: frame.maxX - 196, y: frame.minY + 72))
+            setFrameOrigin(NSPoint(x: frame.maxX - 244, y: frame.minY + 56))
         }
         orderFrontRegardless()
     }

@@ -28,7 +28,7 @@ struct PaywallView: View {
             VStack(spacing: 6) {
                 BogiAsset.mascot
                     .resizable().scaledToFit()
-                    .frame(width: 54, height: 54)
+                    .frame(width: 96, height: 96)
                 Text(headline)
                     .font(.title3).bold()
                     .multilineTextAlignment(.center)
@@ -88,16 +88,18 @@ struct PaywallView: View {
             }
             .font(.caption)
         }
-        .padding(26)
-        .frame(width: 340)
+        .padding(34)
+        // Sized to feel like the onboarding pop-up (560x640 window) — a warm, familiar
+        // moment that invites the upgrade rather than a small, surprising wall.
+        .frame(width: 460)
     }
 
     /// When the user just hit the wall, name it; otherwise lead with the upgrade.
     private var headline: String {
         if let used = usedToday, let limit = dailyLimit, used >= limit {
-            return "That's your \(limit) free nudges for today"
+            return "You and Togi got \(limit) things done today"
         }
-        return "Unlock the always-on Togi"
+        return "Want Togi for the whole day?"
     }
 
     private func upgrade() {

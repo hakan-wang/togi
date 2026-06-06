@@ -19,13 +19,13 @@ struct NudgeDecision: Equatable {
 /// (bigger + sound) only if the user keeps ignoring them. Snooze and per-block
 /// do-not-disturb fully suppress nudges. Acknowledging resets the escalation ladder.
 ///
-/// Escalation rule: each `present(...)` call that arrives within `escalationWindow`
-/// of the previous unacknowledged nudge bumps the level by one, up to `maxEscalation`.
-/// A call outside the window is treated as a fresh, calm nudge (level 0). Sound plays
-/// once the level reaches `soundThreshold`.
+/// Escalation rule: every `present(...)` that lands without an intervening `acknowledge()`
+/// bumps the level by one, up to `maxEscalation`; the first nudge after any reset is calm
+/// (level 0). It tracks the off-task STREAK, not wall-clock spacing, so it climbs correctly
+/// at the judge's 5-minute heartbeat. The owner calls `acknowledge()` when the user gets
+/// back on task or engages the mascot. Sound plays once the level reaches `soundThreshold`.
 final class NudgePresenter {
-    // Injected timing constants (defaults chosen per design notes).
-    private let escalationWindow: TimeInterval  // e.g. 90s
+    // Injected escalation constants (defaults chosen per design notes).
     private let maxEscalation: Int              // e.g. 3
     private let soundThreshold: Int             // e.g. 2
 
@@ -36,10 +36,8 @@ final class NudgePresenter {
     private(set) var snoozedUntil: Date?
     private(set) var dndUntil: Date?
 
-    init(escalationWindow: TimeInterval = 90,
-         maxEscalation: Int = 3,
+    init(maxEscalation: Int = 3,
          soundThreshold: Int = 2) {
-        self.escalationWindow = escalationWindow
         self.maxEscalation = maxEscalation
         self.soundThreshold = soundThreshold
     }
@@ -51,14 +49,16 @@ final class NudgePresenter {
             return NudgeDecision(show: false, escalationLevel: 0, playSound: false, text: nil)
         }
 
-        // Decide escalation: repeated, still-unacknowledged nudges within the window
-        // climb the ladder; anything slower resets to a calm first nudge.
-        if let last = lastNudgeAt, now.timeIntervalSince(last) <= escalationWindow {
-            currentEscalation = min(currentEscalation + 1, maxEscalation)
-            consecutiveIgnored += 1
-        } else {
+        // Each nudge that arrives without an intervening acknowledgement climbs the ladder.
+        // The first nudge after a reset (acknowledge / snooze / back on task) is calm. This
+        // is driven by the off-task streak, not wall-clock spacing, so it escalates even at
+        // the judge's slow 5-minute cadence.
+        if lastNudgeAt == nil {
             currentEscalation = 0
             consecutiveIgnored = 0
+        } else {
+            currentEscalation = min(currentEscalation + 1, maxEscalation)
+            consecutiveIgnored += 1
         }
 
         lastNudgeAt = now

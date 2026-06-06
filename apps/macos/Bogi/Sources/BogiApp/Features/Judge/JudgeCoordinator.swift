@@ -12,6 +12,9 @@ final class JudgeCoordinator {
     private let interval: TimeInterval
     private let onResult: (NudgeDecision, _ onTask: Bool) -> Void
     private var timer: DispatchSourceTimer?
+    /// Consecutive off-task ticks. Tells the judge how long the user has already drifted, and
+    /// drives the nudge escalation; resets the instant they get back on task.
+    private var offTaskStreak = 0
 
     init(judge: JudgeService,
          observations: ObservationStore,
@@ -53,14 +56,20 @@ final class JudgeCoordinator {
         let input = JudgeInput(
             activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: 0
+            recentOffTaskMinutes: offTaskStreak * Int(interval / 60)
         )
 
         guard let nudge = try? await judge.runOnce(input: input) else { return }
         let onTask = !nudge.should
         if nudge.should, let message = nudge.message {
+            // Still off task: extend the streak and let the presenter climb the ladder.
+            offTaskStreak += 1
             onResult(presenter.present(message: message, now: now), onTask)
         } else {
+            // Back on task (or nothing to flag): reset the streak and calm the ladder so the
+            // next drift starts gentle again.
+            offTaskStreak = 0
+            presenter.acknowledge(now: now)
             onResult(NudgeDecision(show: false, escalationLevel: 0, playSound: false, text: nil), onTask)
         }
     }

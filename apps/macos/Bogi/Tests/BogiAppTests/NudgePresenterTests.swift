@@ -15,8 +15,8 @@ final class NudgePresenterTests: XCTestCase {
         XCTAssertEqual(d.text, "Back to the deck.")
     }
 
-    func testEscalationRisesOnRepeatedWithinWindow() {
-        let presenter = NudgePresenter(escalationWindow: 90, maxEscalation: 3, soundThreshold: 2)
+    func testEscalationRisesWhileIgnored() {
+        let presenter = NudgePresenter(maxEscalation: 3, soundThreshold: 2)
 
         let d0 = presenter.present(message: "Still off-task.", now: at(0))
         XCTAssertEqual(d0.escalationLevel, 0)
@@ -42,16 +42,27 @@ final class NudgePresenterTests: XCTestCase {
         XCTAssertTrue(d4.playSound)
     }
 
-    func testNudgeOutsideWindowResetsToCalm() {
-        let presenter = NudgePresenter(escalationWindow: 90)
-        _ = presenter.present(message: "x", now: at(0))
-        let d1 = presenter.present(message: "x", now: at(30))
-        XCTAssertEqual(d1.escalationLevel, 1)
+    func testEscalationClimbsAtSlowCadenceAndResetsOnAck() {
+        // Nudges arrive at the judge's 5-minute heartbeat. Escalation must still climb on the
+        // off-task streak (not on sub-90s spacing), then reset once the user is acknowledged.
+        let presenter = NudgePresenter(soundThreshold: 2)
 
-        // Gap longer than the window → fresh, calm nudge.
-        let d2 = presenter.present(message: "x", now: at(30 + 200))
-        XCTAssertEqual(d2.escalationLevel, 0)
-        XCTAssertFalse(d2.playSound)
+        let d0 = presenter.present(message: "x", now: at(0))
+        XCTAssertEqual(d0.escalationLevel, 0)
+
+        let d1 = presenter.present(message: "x", now: at(300))
+        XCTAssertEqual(d1.escalationLevel, 1)
+        XCTAssertFalse(d1.playSound)
+
+        let d2 = presenter.present(message: "x", now: at(600))
+        XCTAssertEqual(d2.escalationLevel, 2)
+        XCTAssertTrue(d2.playSound)
+
+        // Back on task → calm again, even with the next drift far in the future.
+        presenter.acknowledge(now: at(650))
+        let fresh = presenter.present(message: "x", now: at(1200))
+        XCTAssertEqual(fresh.escalationLevel, 0)
+        XCTAssertFalse(fresh.playSound)
     }
 
     func testSnoozeSuppressesUntilExpiry() {
@@ -94,7 +105,7 @@ final class NudgePresenterTests: XCTestCase {
     }
 
     func testAcknowledgeResetsEscalation() {
-        let presenter = NudgePresenter(escalationWindow: 90, soundThreshold: 2)
+        let presenter = NudgePresenter(soundThreshold: 2)
         _ = presenter.present(message: "x", now: at(0))
         _ = presenter.present(message: "x", now: at(30))
         let escalated = presenter.present(message: "x", now: at(60))

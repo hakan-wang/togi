@@ -136,3 +136,42 @@ hold for legal-entity facts — deploy from a clean tree so you don't publish it
 3. Click Upgrade → browser opens Stripe Checkout → pay → lands on `/upgrade-success`.
 4. Webhook flips `profiles.paid = true`; the app now infers without limit.
 5. Manage subscription → portal → cancel → `customer.subscription.deleted` flips `paid = false`.
+
+---
+
+## Security hardening (from the pre-go-live audit) + follow-ups
+
+Fixed in this change:
+- Webhook rejects replayed/stale events (Stripe timestamp tolerance, ±5 min).
+- Webhook binds paid-state to the Stripe `customer` id and refuses to flip a profile already
+  tied to a different customer, so one person's payment can't grant/revoke another's Pro.
+- All ids are shape-validated (UUID / `cus_…`) and URL-encoded before any query.
+- Profile writes are verified (row-count checked / upserted); a failed write returns 5xx so
+  Stripe retries, instead of a paid user silently staying unpaid.
+- `plan` is derived from our configured price ids, not the editable Stripe nickname.
+- Secure by default: `deploy.sh` now defaults `AUTH_DISABLED=0`. For LOCAL dev you must now set
+  `AUTH_DISABLED=1` explicitly. `/healthz` reports `authDisabled` so a wide-open deploy is obvious.
+
+Still recommended before scale (not blockers for first test payments):
+- Idempotency/ordering: add an `event.id` dedup + ignore out-of-order subscription transitions.
+  Boolean flips are largely self-correcting, but a delayed `updated(active)` after a `deleted`
+  could briefly re-grant Pro.
+- Free-quota backstop: `consume_ai_credit` fails OPEN on a metering outage (kind to users, but
+  unmetered). Add an API Gateway throttle as a coarse cost cap behind it.
+- Residual cross-user bind: only relevant if you add Payment Links / dashboard sessions / a
+  web-initiated checkout. The app-initiated checkout sets the user server-side, so it's safe;
+  if you add other entry points, verify the customer email matches the Supabase user.
+
+---
+
+## Merging with Erik's latest (converse.mjs / tool-use)
+
+Erik's branch added `backend/src/converse.mjs` and refactored `callBedrock` to support
+tool-use, which changes the `/v1/infer` response shape. When that gets merged with this
+paywall work, the ONLY backend conflict is the `/v1/infer` return line. Keep BOTH sides:
+
+    return json(200, { ...buildInferResponse(parsed), paid, freeRemaining });
+
+That preserves his richer response (text, content, stopReason, usage) and the paywall's
+metering fields (paid, freeRemaining). The auth + free-quota gate above the return is
+unchanged and should stay.

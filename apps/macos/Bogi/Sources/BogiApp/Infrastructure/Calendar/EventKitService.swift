@@ -104,6 +104,72 @@ final class EventKitService {
         }
     }
 
+    /// Create a standalone event in the user's default (synced) calendar — used by voice
+    /// scheduling for ordinary events like "call with a friend", which aren't focus blocks.
+    /// Returns the new event's identifier (for later undo), or nil if it couldn't be saved.
+    @discardableResult
+    func createEvent(title: String, start: Date, end: Date, notes: String? = nil) -> String? {
+        guard authorizationStatus() == .granted else { return nil }
+
+        let event = EKEvent(eventStore: store)
+        event.calendar = targetCalendar()
+        event.title = title
+        event.startDate = start
+        event.endDate = end > start ? end : start.addingTimeInterval(30 * 60)
+        if let notes { event.notes = notes }
+
+        // Remind ahead of the event: 1 hour, 30 minutes, and 10 minutes before.
+        for offset in [-3600.0, -1800.0, -600.0] {
+            event.addAlarm(EKAlarm(relativeOffset: offset))
+        }
+
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+            return event.eventIdentifier
+        } catch {
+            return nil
+        }
+    }
+
+    /// Remove an event Bogi created, identified by the id returned from ``createEvent`` /
+    /// ``upsertBogiBlock``. Returns true on success. No-op if permission is missing or the
+    /// event no longer exists.
+    @discardableResult
+    func deleteEvent(identifier: String) -> Bool {
+        guard authorizationStatus() == .granted,
+              let event = store.event(withIdentifier: identifier) else { return false }
+        do {
+            try store.remove(event, span: .thisEvent, commit: true)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// The calendar Togi writes to. Prefers a Google calendar connected to macOS Calendar so
+    /// voice-scheduled events sync straight to Google; otherwise the system default.
+    private func targetCalendar() -> EKCalendar? {
+        let writable = store.calendars(for: .event).filter { $0.allowsContentModifications }
+        if let google = writable.first(where: { Self.isGoogle($0) }) { return google }
+        return store.defaultCalendarForNewEvents ?? bogiCalendar() ?? writable.first
+    }
+
+    /// Whether a writable Google calendar is connected (used to tell the user it'll sync to Google).
+    func hasGoogleCalendar() -> Bool {
+        guard authorizationStatus() == .granted else { return false }
+        return store.calendars(for: .event).contains { $0.allowsContentModifications && Self.isGoogle($0) }
+    }
+
+    /// Recognise a Google calendar among macOS Calendar sources (Google syncs via CalDAV, titled
+    /// with the account's name or email).
+    private static func isGoogle(_ calendar: EKCalendar) -> Bool {
+        let title = (calendar.source?.title ?? "").lowercased()
+        if title.contains("icloud") { return false }
+        if title.contains("google") || title.contains("gmail") { return true }
+        if calendar.source?.sourceType == .calDAV, title.contains("@") { return true }
+        return false
+    }
+
     private func bogiCalendar() -> EKCalendar? {
         if let match = store.calendars(for: .event).first(where: { $0.title == bogiCalendarTitle }) {
             return match
