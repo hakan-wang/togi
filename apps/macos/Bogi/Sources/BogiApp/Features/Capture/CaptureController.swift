@@ -70,7 +70,8 @@ final class CaptureController {
             text: snap.text,
             contentHash: snap.contentHash,
             captureMethod: "ax",
-            excluded: false
+            excluded: false,
+            focused: snap.focused
         ))
         return true
     }
