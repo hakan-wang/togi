@@ -1,15 +1,11 @@
 import SwiftUI
 
-/// The floating mascot view. Placeholder art: an SF Symbol fish whose color and size
-/// reflect the current mood, with an optional non-modal speech bubble above it.
-///
-/// Clicking the fish invokes `onActivate` (the "open coach chat" hook). The bubble is
-/// deliberately small and quiet at low escalation and grows as escalation rises — it
-/// must never become a blocking wall.
+/// The floating mascot: the plush axolotl logo, calmly hovering and bobbing. A soft halo
+/// behind it tints with mood (green on-task, amber off-task). Clicking it opens Bogi.
+/// The optional speech bubble stays quiet at low escalation and grows if ignored — never
+/// a blocking wall.
 struct MascotView: View {
     @ObservedObject var viewModel: MascotViewModel
-
-    /// Hook fired when the user clicks the mascot ("Hey Bogi" / open coach chat).
     var onActivate: (() -> Void)?
 
     var body: some View {
@@ -20,45 +16,50 @@ struct MascotView: View {
             }
 
             Button(action: { onActivate?() }) {
-                Image(systemName: "fish.fill")
+                BogiAsset.mascot
                     .resizable()
                     .scaledToFit()
-                    .frame(width: fishSize, height: fishSize)
-                    .foregroundStyle(moodColor)
-                    .padding(16)
-                    .background(.thinMaterial, in: Circle())
+                    .frame(width: 68, height: 68)
+                    .background(halo)
+                    .shadow(color: Color(hex: 0x285078).opacity(0.30), radius: 13, y: 9)
                     .scaleEffect(escalationScale)
+                    .bob()
             }
             .buttonStyle(.plain)
-            .help("Open Bogi coach")
+            .help("Open Bogi")
+            .accessibilityLabel("Bogi")
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.bubbleText)
         .animation(.easeInOut(duration: 0.25), value: viewModel.escalationLevel)
         .padding(8)
     }
 
-    // MARK: - Mood-driven appearance
+    // MARK: - Mood halo (the plush art is fixed, so mood reads as a soft glow behind it)
 
-    private var moodColor: Color {
+    private var halo: some View {
+        Circle()
+            .fill(haloColor)
+            .blur(radius: 18)
+            .frame(width: 84, height: 84)
+            .opacity(viewModel.mood == .idle ? 0 : 0.55)
+            .animation(.easeInOut(duration: 0.4), value: viewModel.mood)
+    }
+
+    private var haloColor: Color {
         switch viewModel.mood {
-        case .idle:     return .gray
-        case .onTask:   return Color.green.opacity(0.9)
-        case .offTask:  return .orange
-        case .speaking: return viewModel.escalationLevel >= 2 ? .red : .orange
+        case .idle:     return .clear
+        case .onTask:   return Color.green.opacity(0.8)
+        case .offTask:  return Color.orange.opacity(0.85)
+        case .speaking: return viewModel.escalationLevel >= 2 ? Color.red.opacity(0.85) : Color.orange.opacity(0.85)
         }
     }
 
-    private var fishSize: CGFloat { 56 }
-
-    /// Subtle growth as escalation climbs so an ignored nudge gets more visible
-    /// without ever becoming modal.
     private var escalationScale: CGFloat {
-        1.0 + (CGFloat(viewModel.escalationLevel) * 0.08)
+        1.0 + (CGFloat(viewModel.escalationLevel) * 0.07)
     }
 }
 
-/// Small non-modal callout above the fish. Tone is blunt, not naggy — that copy is
-/// supplied by the caller; this view just renders it.
+/// Small non-modal callout above the mascot. Blunt, not naggy — copy comes from the caller.
 private struct SpeechBubble: View {
     let text: String
     let escalationLevel: Int
@@ -67,36 +68,27 @@ private struct SpeechBubble: View {
         Text(text)
             .font(escalationLevel >= 2 ? .callout.bold() : .caption)
             .multilineTextAlignment(.center)
-            .foregroundStyle(.primary)
+            .foregroundStyle(BogiColor.ink)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(maxWidth: 220)
-            .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(escalationLevel >= 2 ? Color.red.opacity(0.6) : Color.clear, lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(escalationLevel >= 2 ? Color.red.opacity(0.6) : Color.white.opacity(0.7), lineWidth: 1)
             )
-            .shadow(radius: 4, y: 2)
-    }
-
-    private var bubbleBackground: some ShapeStyle {
-        escalationLevel >= 2 ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(.thinMaterial)
+            .shadow(color: Color(hex: 0x285078).opacity(0.25), radius: 8, y: 4)
     }
 }
 
 #if DEBUG
 #Preview("Off-task, escalated") {
-    MascotView(viewModel: {
-        let vm = MascotViewModel(mood: .speaking,
-                                 bubbleText: "You opened Twitter 4 minutes ago. That's not the deck.",
-                                 escalationLevel: 2)
-        return vm
-    }())
-    .frame(width: 260, height: 200)
-}
-
-#Preview("On task") {
-    MascotView(viewModel: MascotViewModel(mood: .onTask))
-        .frame(width: 160, height: 160)
+    MascotView(viewModel: MascotViewModel(
+        mood: .speaking,
+        bubbleText: "you opened twitter 4 minutes ago. that's not the deck.",
+        escalationLevel: 2
+    ))
+    .frame(width: 280, height: 220)
+    .padding()
 }
 #endif

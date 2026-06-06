@@ -18,6 +18,9 @@ let package = Package(
             name: "BogiApp",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift")
+            ],
+            resources: [
+                .copy("Resources/mascot.png")
             ]
         ),
         .testTarget(

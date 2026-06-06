@@ -5,7 +5,7 @@ struct MenuBarContent: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        Button("Open Dashboard") { appState.openDashboard?() }
+        Button("Open Bogi") { appState.openDashboard?() }
 
         Button("Check in now") { appState.runJudgeNow?() }
 

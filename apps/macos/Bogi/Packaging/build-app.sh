@@ -18,6 +18,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Bogi"
 cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
+# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) so
+# Bundle.module resolves at runtime inside the .app.
+for bundle in "$(dirname "$BIN")"/*.bundle; do
+  [ -e "$bundle" ] || continue
+  cp -R "$bundle" "$APP/Contents/MacOS/"
+  cp -R "$bundle" "$APP/Contents/Resources/"
+done
 # cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
 
 if [ -n "${DEVELOPER_ID:-}" ]; then

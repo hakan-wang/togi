@@ -92,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mascot: MascotPanel?
     private let presenter = NudgePresenter()
     private var coordinator: JudgeCoordinator?
-    private var dashboardWindow: NSWindow?
+    private var companion: CompanionPanel?
 
     override init() {
         let db: DatabaseService
@@ -115,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.capture.start()
 
         let mascot = MascotPanel()
-        mascot.onActivate = { [weak self] in self?.showDashboard() }
+        mascot.onActivate = { [weak self] in self?.toggleCompanion() }
         mascot.show()
         self.mascot = mascot
 
@@ -130,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.start()
         self.coordinator = coordinator
 
-        appState.openDashboard = { [weak self] in self?.showDashboard() }
+        appState.openDashboard = { [weak self] in self?.showCompanion() }
         appState.runJudgeNow = { [weak self] in Task { await self?.coordinator?.tick() } }
     }
 
@@ -144,25 +144,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showDashboard() {
-        if dashboardWindow == nil {
-            let state = appState
-            let view = DashboardView(
+    private func companionPanel() -> CompanionPanel {
+        if let companion { return companion }
+        let state = appState
+        let panel = CompanionPanel {
+            CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
-                ask: { question in try await state.coach.ask(question) }
+                ask: { question in try await state.coach.ask(question) },
+                onSettings: { AppDelegate.openSettings() },
+                onClose: { [weak self] in self?.companion?.orderOut(nil) }
             )
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered, defer: false
-            )
-            window.title = "Bogi"
-            window.contentView = NSHostingView(rootView: view)
-            window.center()
-            window.isReleasedWhenClosed = false
-            dashboardWindow = window
         }
-        NSApp.activate(ignoringOtherApps: true)
-        dashboardWindow?.makeKeyAndOrderFront(nil)
+        companion = panel
+        return panel
+    }
+
+    private func showCompanion() { companionPanel().show() }
+    private func toggleCompanion() { companionPanel().toggle() }
+
+    private static func openSettings() {
+        if !NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 }
