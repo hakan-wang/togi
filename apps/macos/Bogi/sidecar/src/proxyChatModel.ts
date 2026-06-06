@@ -101,7 +101,15 @@ export class BogiProxyChatModel extends BaseChatModel {
       tools: this.boundTools?.length ? this.boundTools : undefined,
       maxTokens: this.maxTokens,
     };
-    if (this.streamFn) return this.generateStreaming(body);
+    if (this.streamFn) {
+      try {
+        return await this.generateStreaming(body);
+      } catch (err) {
+        // Streaming failed (e.g. WS auth/connect error). If a non-streaming HTTP transport is
+        // available, degrade to it so the agent still answers (just without token-by-token).
+        if (!this.post) throw err;
+      }
+    }
     if (!this.post) throw new Error("BogiProxyChatModel requires either `post` or `stream`");
     const res = await this.post(body);
     const text = res.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("");

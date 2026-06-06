@@ -125,12 +125,13 @@ final class AppState: ObservableObject {
     func startSidecar() async {
         let token = await auth.currentAccessToken() ?? ""
         sidecarTransport.environment["BOGI_AUTH_TOKEN"] = token
-        // The WebSocket streaming API is not deployed yet. Only pass BOGI_WS_URL when it is
-        // explicitly provided in the environment; otherwise leave it unset so the sidecar
-        // uses its HTTP /v1/infer fallback.
-        if let wsURL = ProcessInfo.processInfo.environment["BOGI_WS_URL"] {
-            sidecarTransport.environment["BOGI_WS_URL"] = wsURL
-        }
+        // WebSocket streaming endpoint (Bedrock ConverseStream). The sidecar streams model
+        // turns over this and emits token-by-token frames; on any WS failure (e.g. an expired
+        // token) it transparently degrades to the HTTP /v1/infer path. An env override wins so
+        // tests/dev can point elsewhere.
+        let wsURL = ProcessInfo.processInfo.environment["BOGI_WS_URL"]
+            ?? "wss://spz67o2b6l.execute-api.eu-west-1.amazonaws.com/prod"
+        sidecarTransport.environment["BOGI_WS_URL"] = wsURL
         do { try sidecar.start() } catch {
             NSLog("Bogi: failed to start sidecar: \(error)")
         }
@@ -181,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let planner = appState.planner
         let presenter = self.presenter
         let segmentStore = appState.segments
+        let search = appState.search
         let actions = SidecarActionHandlers(
             createBlock: { title, start, end in
                 await MainActor.run {
@@ -201,7 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             recordSegments: { segs in
                 await MainActor.run {
-                    segs.forEach { segmentStore.insert($0) }
+                    segs.forEach {
+                        segmentStore.insert($0)
+                        let desc = [$0.category, $0.subCategory, $0.subSub].compactMap { $0 }.joined(separator: " — ")
+                        if !desc.isEmpty { search.indexSegment(id: $0.id, description: desc) }
+                    }
                     return segs.count
                 }
             })
@@ -218,6 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let coordinator = JudgeCoordinator(
             observations: appState.observations,
             blocks: appState.plannedBlocks,
+            segments: appState.segments,
             sidecar: appState.sidecar
         )
         coordinator.start()

@@ -38,6 +38,17 @@ test("system messages are not sent as user turns (Converse needs alternating rol
   expect(roles).toEqual(["user"]); // the system message must be filtered out, not mapped to user
 });
 
+test("falls back to HTTP post when the stream transport throws", async () => {
+  let postCalled = false;
+  const model = new BogiProxyChatModel({
+    stream: async function* () { throw new Error("ws connect failed (401)"); },
+    post: async () => { postCalled = true; return { text: "via http", stopReason: "end_turn", content: [{ type: "text", text: "via http" }] }; },
+  });
+  const res = await model.invoke([new HumanMessage("hi")]);
+  expect(postCalled).toBe(true);
+  expect(res.content).toBe("via http");
+});
+
 test("streams text deltas via onToken and returns accumulated content", async () => {
   const deltas: string[] = [];
   const model = new BogiProxyChatModel({

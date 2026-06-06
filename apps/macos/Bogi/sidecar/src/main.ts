@@ -158,7 +158,9 @@ export async function runStdio(): Promise<void> {
     : undefined;
   const stream = wsUrl ? makeWsStream(wsUrl, getToken) : undefined;
 
-  const agent = createBogiAgent(wsUrl ? { tools, stream, onToken } : { tools, post });
+  // Always provide the HTTP `post` so a WS failure (e.g. unauthenticated connect) degrades to
+  // non-streaming rather than failing the request. When `wsUrl` is set we also stream.
+  const agent = createBogiAgent(wsUrl ? { tools, stream, onToken, post } : { tools, post });
   modelRef = (agent as unknown as { __bogiModel?: { activeRequestId: string | null } }).__bogiModel;
   const dispatch = makeDispatcher({
     agent,
