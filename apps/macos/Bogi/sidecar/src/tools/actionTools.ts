@@ -1,9 +1,9 @@
-import { tool } from "@langchain/core/tools";
+import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { z } from "zod";
 
 export type CallAction = (name: string, input: unknown) => Promise<unknown>;
 
-export function makeActionTools(callAction: CallAction) {
+export function makeActionTools(callAction: CallAction): StructuredToolInterface[] {
   const create_block = tool(
     async (input) => JSON.stringify(await callAction("create_block", input)),
     {

@@ -1,4 +1,4 @@
-import { tool } from "@langchain/core/tools";
+import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import { z } from "zod";
 import { type DB } from "../db.js";
 
@@ -9,7 +9,7 @@ function ftsExpr(keywords: string): string {
   return toks.map((t) => `"${t}"`).join(" OR ");
 }
 
-export function makeReadTools(open: OpenDB) {
+export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
   const search_activity = tool(
     async ({ keywords, start, end, limit }) => {
       const db = open();

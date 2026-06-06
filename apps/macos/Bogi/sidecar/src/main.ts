@@ -53,7 +53,7 @@ export async function runStdio(): Promise<void> {
     void dispatch(m);
   });
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (c) => decoder.push(c as string));
+  process.stdin.on("data", (c) => decoder.push(String(c)));
   process.stdout.write(encodeMessage({ kind: "ready" }));
 }
 
