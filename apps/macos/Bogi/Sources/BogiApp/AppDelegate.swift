@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     let plannedBlocks: PlannedBlockRepository
     let planner: PlannerService
     let eventKit: EventKitService
+    let googleCalendar: GoogleCalendarService
     let search: SearchService
     let goals: GoalsService
     let insights: InsightsService
@@ -33,6 +34,9 @@ final class AppState: ObservableObject {
     /// Wired by the AppDelegate after launch (menu-bar actions call these).
     var openDashboard: (() -> Void)?
     var runJudgeNow: (() -> Void)?
+
+    /// Set by the AppDelegate after launch; drives the Calendars settings UI.
+    @Published var calendarSync: CalendarSyncCoordinator?
 
     init(database: DatabaseService) {
         self.database = database
@@ -65,6 +69,7 @@ final class AppState: ObservableObject {
         self.plannedBlocks = plannedBlocks
         self.planner = PlannerService(repository: plannedBlocks)
         self.eventKit = EventKitService()
+        self.googleCalendar = GoogleCalendarService(redirectScheme: GoogleConfig.redirectScheme)
         self.search = SearchService(
             database: database,
             index: VectorIndex(database: database),
@@ -132,6 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         appState.openDashboard = { [weak self] in self?.showCompanion() }
         appState.runJudgeNow = { [weak self] in Task { await self?.coordinator?.tick() } }
+
+        let calendarSync = CalendarSyncCoordinator(
+            google: appState.googleCalendar, planner: appState.planner, settings: appState.settings
+        )
+        calendarSync.start()
+        appState.calendarSync = calendarSync
     }
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {

@@ -14,7 +14,7 @@ struct SettingsView: View {
             PlaceholderTab(title: "Capture", note: "Pause, app/domain excludes, retention — Phase 1")
                 .tabItem { Label("Capture", systemImage: "eye") }
 
-            PlaceholderTab(title: "Calendars", note: "Apple (EventKit) + Google (PKCE) — Phase 4")
+            CalendarsSettingsView()
                 .tabItem { Label("Calendars", systemImage: "calendar") }
 
             LoginView(

@@ -6,6 +6,14 @@ enum BackendConfig {
     static let baseURL = URL(string: "https://e7fsq18rqf.execute-api.eu-west-1.amazonaws.com")!
 }
 
+/// Google OAuth (installed-app / iOS client type, PKCE, no secret). Tokens live only in the
+/// macOS Keychain; calendar data goes straight to Google, never to the Bogi backend.
+enum GoogleConfig {
+    static let clientID = "217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb.apps.googleusercontent.com"
+    /// Reversed-client-ID custom scheme Google requires for iOS-type OAuth clients.
+    static let redirectScheme = "com.googleusercontent.apps.217551213798-j2hjo7ghkgd2t3mh10o5haf8hqqgbokb"
+}
+
 /// Supabase project (auth only — no user data). The anon key is public by design.
 enum SupabaseConfig {
     static let url = URL(string: "https://qpbmrmmnojpqwcaxmqww.supabase.co")!
