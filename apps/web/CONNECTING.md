@@ -7,6 +7,7 @@ There's a settings file at **`togi/apps/web/.env.local`**. Open it in any text e
 (or tell me and I'll open it). It looks like this — you just fill in the blanks after each `=`:
 
 ```
+GROQ_API_KEY=
 OPENAI_API_KEY=
 BACKEND_BASE_URL=https://e7fsq18rqf.execute-api.eu-west-1.amazonaws.com
 NEXT_PUBLIC_SUPABASE_URL=
@@ -15,19 +16,21 @@ SUPABASE_SERVICE_KEY=
 ```
 
 Rules: paste the value right after the `=`, **no quotes, no spaces**. `BACKEND_BASE_URL`
-is already filled — leave it. `SUPABASE_SERVICE_KEY` is optional — you can leave it blank.
+is already filled — leave it. `OPENAI_API_KEY` and `SUPABASE_SERVICE_KEY` are optional —
+leave them blank.
 
 ---
 
-## 1. OpenAI key (turns on real voice → text)
+## 1. Groq key (turns on real voice → text) — FREE
 
-1. Go to **https://platform.openai.com** and sign in (or sign up).
-2. You need a little credit on the account: top-right menu → **Billing** → add ~$5.
-   (Whisper is cheap — a check-in costs a fraction of a cent.)
-3. Go to **https://platform.openai.com/api-keys** → click **"Create new secret key"** →
-   give it a name like "Togi" → **Create** → **Copy** it. It starts with `sk-...`.
-   (You only see it once — copy it now.)
-4. Paste it after `OPENAI_API_KEY=`.
+Groq is free (no credit card) and fast. We use it for speech-to-text.
+
+1. Go to **https://console.groq.com** → sign in (you can use Google or GitHub).
+2. Left sidebar → **API Keys** → **"Create API Key"** → name it `Togi` → **Submit**.
+3. **Copy** the key (it starts with `gsk_...`). You only see it once.
+4. Paste it after `GROQ_API_KEY=`.
+
+(That's it — leave `OPENAI_API_KEY` blank. It's only a paid backup if you ever want it.)
 
 ---
 
