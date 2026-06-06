@@ -5,16 +5,21 @@ import Foundation
 final class SidecarActionHandlers {
     typealias CreateBlock = (_ title: String, _ start: Date, _ end: Date) async -> String?
     typealias MoveBlock = (_ match: String, _ start: Date, _ end: Date) async -> String?
+    typealias PostNudge = (_ severity: Int, _ message: String) async -> Void
 
     private let createBlock: CreateBlock
     private let moveBlock: MoveBlock
+    private let postNudge: PostNudge
     private let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
     }()
 
-    init(createBlock: @escaping CreateBlock, moveBlock: @escaping MoveBlock) {
+    init(createBlock: @escaping CreateBlock,
+         moveBlock: @escaping MoveBlock,
+         postNudge: @escaping PostNudge = { _, _ in }) {
         self.createBlock = createBlock
         self.moveBlock = moveBlock
+        self.postNudge = postNudge
     }
 
     /// Returns a JSON-encodable dictionary result for the given action.
@@ -34,6 +39,13 @@ final class SidecarActionHandlers {
             }
             if let id = await moveBlock(match, start, end) { return ["ok": true, "id": id] }
             return ["ok": false, "error": "not_found"]
+        case "post_nudge":
+            guard let message = input["message"] as? String else {
+                return ["ok": false, "error": "bad_input"]
+            }
+            let severity = (input["severity"] as? Int) ?? 0
+            await postNudge(severity, message)
+            return ["ok": true]
         default:
             return ["ok": false, "error": "unknown_action"]
         }

@@ -104,11 +104,13 @@ final class JudgeTests: XCTestCase {
         let fixedNow = Date(timeIntervalSince1970: 1_000_000)
         let service = JudgeService(inference: inference, segmentStore: store, clock: { fixedNow })
 
-        let nudge = try await service.runOnce(input: makeInput())
+        let run = try await service.runOnce(input: makeInput())
 
         XCTAssertEqual(store.count(), 2)
-        XCTAssertTrue(nudge.should)
-        XCTAssertEqual(nudge.severity, 2)
+        XCTAssertEqual(run.segments.count, 2)
+        XCTAssertEqual(run.segments.first?.onTask, false)
+        XCTAssertTrue(run.nudge.should)
+        XCTAssertEqual(run.nudge.severity, 2)
         // The judge actually built and sent a prompt.
         XCTAssertEqual(inference.lastSystem, JudgePrompt.system)
         XCTAssertEqual(inference.lastMessages.first?.role, "user")
@@ -120,10 +122,11 @@ final class JudgeTests: XCTestCase {
         let inference = MockInferenceClient(response: onTaskJSON)
         let service = JudgeService(inference: inference, segmentStore: store)
 
-        let nudge = try await service.runOnce(input: makeInput())
+        let run = try await service.runOnce(input: makeInput())
 
         XCTAssertEqual(store.count(), 1)
-        XCTAssertFalse(nudge.should)
+        XCTAssertEqual(run.segments.count, 1)
+        XCTAssertFalse(run.nudge.should)
     }
 
     func testUserJSONIncludesFocusedFlag() {

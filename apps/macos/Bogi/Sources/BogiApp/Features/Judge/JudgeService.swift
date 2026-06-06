@@ -1,5 +1,13 @@
 import Foundation
 
+/// The result of one judge tick: the parsed activity segments (consumed by the nudge gate)
+/// plus the structured nudge field (retained for compatibility; `should` is always false now,
+/// since the nudge decision moved to the agent).
+struct JudgeRun {
+    let segments: [JudgeSegment]
+    let nudge: JudgeNudge
+}
+
 /// The 5-minute heartbeat. One `runOnce` = one judge tick: build prompt → infer → parse →
 /// persist segments → return the nudge decision.
 ///
@@ -22,9 +30,10 @@ final class JudgeService {
         self.clock = clock
     }
 
-    /// Run a single judge cycle. Persists the parsed segments and returns the nudge decision.
+    /// Run a single judge cycle. Persists the parsed segments and returns them (plus the
+    /// raw nudge field) so the coordinator's gate can decide whether to invoke the agent.
     @discardableResult
-    func runOnce(input: JudgeInput) async throws -> JudgeNudge {
+    func runOnce(input: JudgeInput) async throws -> JudgeRun {
         let userJSON = JudgePrompt.userJSON(input)
         let raw = try await inference.infer(
             system: JudgePrompt.system,
@@ -54,6 +63,6 @@ final class JudgeService {
             segmentStore.insert(segment)
         }
 
-        return output.nudge
+        return JudgeRun(segments: output.segments, nudge: output.nudge)
     }
 }
