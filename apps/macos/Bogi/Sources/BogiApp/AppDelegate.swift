@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// App-wide singletons: the local DB, capture loop, AI/auth, planner, and the data-bank
@@ -151,6 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var companion: CompanionPanel?
     private var calm: CalmPanel?
     private var calmScheduler: CalmScheduler?
+    private var gateWindow: NSWindow?
+    private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
+    private var gateObservation: AnyCancellable?
+    private var mainExperienceStarted = false
 
     override init() {
         let db: DatabaseService
@@ -192,6 +197,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Gate the whole app on a signed-in, subscribed user (strict online check).
+        gateObservation = gate.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in self?.applyGateState(state) }
+        Task { await gate.refresh() }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard mainExperienceStarted || gateWindow != nil else { return }
+        Task { await gate.refresh() }
+    }
+
+    private func applyGateState(_ state: GateState) {
+        if state == .unlocked {
+            gateWindow?.orderOut(nil)
+            gateWindow = nil
+            startMainExperienceIfNeeded()
+        } else {
+            showGateWindow(for: state)
+        }
+    }
+
+    private func showGateWindow(for state: GateState) {
+        let view = GateView(
+            state: state,
+            signIn: { [weak self] email, pw in try await self?.gate.signIn(email: email, password: pw) },
+            openWebsite: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
+            onSubscribe: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
+            onRecheck: { [weak self] in Task { await self?.gate.refresh() } },
+            onSignOut: { [weak self] in self?.gate.signOut() }
+        )
+        if let win = gateWindow {
+            win.contentViewController = NSHostingController(rootView: view)
+        } else {
+            let win = NSWindow(contentViewController: NSHostingController(rootView: view))
+            win.styleMask = [.titled, .closable]
+            win.title = "Togi"
+            win.isReleasedWhenClosed = false
+            win.center()
+            gateWindow = win
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        gateWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Everything that used to run unconditionally in applicationDidFinishLaunching — now only
+    /// after the gate unlocks, and only once.
+    private func startMainExperienceIfNeeded() {
+        guard !mainExperienceStarted else { return }
+        mainExperienceStarted = true
+        startMainExperience()
+    }
+
+    private func startMainExperience() {
         if appState.capture.permissionState != .granted {
             appState.capture.requestPermission()
         }
