@@ -47,7 +47,8 @@ final class JudgeCoordinator {
         guard !recent.isEmpty else { return }
 
         let obs = recent.map {
-            (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle, text: $0.text)
+            (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle,
+             text: $0.text, focused: $0.focused)
         }
         let active = blocks.activeBlock(at: now)
         let input = JudgeInput(
