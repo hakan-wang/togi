@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import AuthenticationServices
 
 /// Connects Google Calendar and periodically reconciles events into `planned_blocks` so the
@@ -33,6 +34,12 @@ final class CalendarSyncCoordinator: ObservableObject {
 
     func connectGoogle(anchor: ASPresentationAnchor) async {
         lastError = nil
+        // Bogi is a menu-bar (accessory) app; macOS won't let an accessory app present a
+        // web-auth sheet. Briefly promote to a regular foreground app for the auth flow.
+        let previousPolicy = NSApp.activationPolicy()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        defer { NSApp.setActivationPolicy(previousPolicy) }
         do {
             try await google.authorize(clientId: GoogleConfig.clientID, presentationAnchor: anchor)
             googleConnected = true
