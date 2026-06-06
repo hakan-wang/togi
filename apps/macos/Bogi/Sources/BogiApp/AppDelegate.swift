@@ -1,13 +1,39 @@
 import AppKit
 import SwiftUI
 
-/// Holds app-wide singletons. Grows as phases land (capture, judge, auth, …).
+/// Holds app-wide singletons. Grows as phases land (judge, auth, …).
 final class AppState: ObservableObject {
     let database: DatabaseService
-    @Published var capturePaused: Bool = false
+    let capture: CaptureController
+    private let settings: SettingsStore
+
+    @Published var capturePaused: Bool {
+        didSet {
+            capture.isPaused = capturePaused
+            settings.setBool("paused", capturePaused)
+        }
+    }
 
     init(database: DatabaseService) {
         self.database = database
+        let settings = SettingsStore(database: database)
+        self.settings = settings
+
+        let excludes = CaptureExcludes.makeDefault(
+            userApps: settings.stringArray("excluded_apps"),
+            userDomains: settings.stringArray("excluded_domains")
+        )
+        self.capture = CaptureController(
+            provider: AccessibilityCaptureService(),
+            store: ObservationStore(database: database),
+            excludes: excludes,
+            pruner: RetentionPruner(database: database),
+            settings: settings
+        )
+
+        let paused = settings.bool("paused", default: false)
+        self.capturePaused = paused
+        capture.isPaused = paused
     }
 }
 
@@ -16,14 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mascot: MascotPanel?
 
     override init() {
-        // Open (and migrate) the local database at startup. If it fails we still want the
-        // app to launch in a degraded state rather than crash silently.
         let db: DatabaseService
         do {
             db = try DatabaseService(path: DatabaseService.defaultPath())
         } catch {
             NSLog("Bogi: failed to open database: \(error). Falling back to in-memory.")
-            // Force-try is acceptable here: an in-memory DB creation failing is unrecoverable.
             db = try! DatabaseService(inMemory: true)
         }
         appState = AppState(database: db)
@@ -31,10 +54,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Accessory: live in the menu bar, no dock icon, no main window.
         NSApp.setActivationPolicy(.accessory)
 
-        // Placeholder floating mascot so the running app is tangible (real art comes later).
+        // Ask for Accessibility up front (Phase 4 moves this into a proper onboarding primer).
+        if appState.capture.permissionState != .granted {
+            appState.capture.requestPermission()
+        }
+        appState.capture.start()
+
         let mascot = MascotPanel()
         mascot.show()
         self.mascot = mascot
