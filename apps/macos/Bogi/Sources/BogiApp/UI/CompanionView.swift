@@ -1,15 +1,25 @@
 import SwiftUI
+import Combine
 
-/// The Bogi companion: a compact frosted-glass panel. Primary page is the coach chat;
-/// the chart button in the top toolbar flips to the dashboard (Day/Week/Month/Year
-/// insights). Styled per the brand: frosted glass, sky tint, sky-blue accent.
+/// The Togi companion: a light liquid-glass command bar that grows with the conversation.
+/// It opens almost empty (just the input and a few live openers) and reports its rendered
+/// height to the host panel so the window can size to fit, capped so it never fills the
+/// screen. The chart button flips to the dashboard (Day/Week/Month/Year insights).
 struct CompanionView: View {
     enum Page { case chat, dashboard }
 
     let insight: (DashboardPeriod) -> PeriodInsight
     let ask: (String) async throws -> String
+    /// Live conversation openers for the empty chat state. Injected by the host.
+    var suggest: () -> [String] = { [] }
+    /// The tallest the card may grow. Used to cap the transcript and the dashboard.
+    var maxContentHeight: CGFloat = 600
+    /// Reports the card's current rendered height so the panel can resize to fit.
+    var onHeightChange: (CGFloat) -> Void = { _ in }
     var onSettings: () -> Void = {}
     var onClose: () -> Void = {}
+    /// Pre-seeded transcript for previews and the screenshot demo hook. Empty in the real app.
+    var seedMessages: [(role: String, text: String)] = []
 
     @State private var page: Page = .chat
     @State private var period: DashboardPeriod = .day
@@ -17,25 +27,36 @@ struct CompanionView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            Divider().opacity(0.4)
+            Divider().opacity(0.35)
             content
         }
-        .frame(width: 420, height: 520)
+        .frame(width: 420)
         .background(panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.65), lineWidth: 1)
+                .stroke(Color.white.opacity(0.6), lineWidth: 1)
         )
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { onHeightChange(geo.size.height) }
+                    .onChange(of: geo.size.height) { _, height in onHeightChange(height) }
+            }
+        )
+        .onExitCommand { onClose() }
+        .onReceive(NotificationCenter.default.publisher(for: .companionDidOpen)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) { page = .chat }
+        }
     }
 
     // MARK: - Top toolbar (the row of buttons)
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Text("bogi")
+            Text("togi")
                 .font(.system(.title3, design: .serif))
-                .foregroundStyle(BogiColor.ink)
+                .foregroundStyle(.primary)
             Spacer()
             iconButton("bubble.left.and.bubble.right.fill", active: page == .chat) {
                 withAnimation(.easeInOut(duration: 0.22)) { page = .chat }
@@ -47,7 +68,7 @@ struct CompanionView: View {
             iconButton("xmark", active: false, action: onClose)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 8)
     }
 
     private func iconButton(_ symbol: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -56,7 +77,8 @@ struct CompanionView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(active ? Color.white : BogiColor.muted)
                 .frame(width: 26, height: 26)
-                .background(active ? BogiColor.primary : Color.white.opacity(0.55), in: Circle())
+                .background(active ? AnyShapeStyle(BogiColor.primary) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(active ? 0 : 0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -67,10 +89,16 @@ struct CompanionView: View {
     private var content: some View {
         switch page {
         case .chat:
-            CoachView(ask: ask)
-                .transition(.opacity.combined(with: .move(edge: .leading)))
+            CoachView(
+                ask: ask,
+                suggest: suggest,
+                transcriptMaxHeight: max(160, maxContentHeight - 140),
+                seedMessages: seedMessages
+            )
+            .transition(.opacity.combined(with: .move(edge: .leading)))
         case .dashboard:
             dashboardPage
+                .frame(height: max(260, maxContentHeight - 44))
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
     }
@@ -96,12 +124,16 @@ struct CompanionView: View {
         }
     }
 
-    // MARK: - Frosted background
+    // MARK: - Liquid-glass background
 
     private var panelBackground: some View {
         ZStack {
-            Rectangle().fill(.regularMaterial)          // frosts the desktop behind the panel
-            BogiGradient.sky.opacity(0.30)              // dreamy sky tint
+            Rectangle().fill(.ultraThinMaterial)                 // see-through frosted glass
+            LinearGradient(                                      // a hint of light across the top
+                colors: [Color.white.opacity(0.14), .clear],
+                startPoint: .top, endPoint: .center
+            )
+            BogiGradient.sky.opacity(0.08)                       // faint brand tint, not a wash
         }
     }
 }
@@ -119,9 +151,10 @@ struct CompanionView: View {
                 blocks: []
             )
         },
-        ask: { _ in try await Task.sleep(nanoseconds: 300_000_000); return "you spent most of the hour in the editor. good." }
+        ask: { _ in try await Task.sleep(nanoseconds: 300_000_000); return "you spent most of the hour in the editor. good." },
+        suggest: { ["why did i lose 50 min to social?", "where did my time go today?", "what should i focus on next?"] }
     )
-    .frame(width: 420, height: 520)
+    .frame(width: 420)
     .padding(40)
     .background(Color.black)
 }

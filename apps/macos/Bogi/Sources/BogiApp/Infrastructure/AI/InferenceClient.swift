@@ -16,6 +16,10 @@ protocol InferenceClient {
 enum InferenceError: Error {
     case badStatus(Int)
     case emptyResponse
+    /// 402 from the backend: the free daily quota is spent (or Pro is required). `used` and
+    /// `limit` describe today's free allowance when the server included them. The UI should
+    /// react to this by showing the paywall rather than a generic error.
+    case paymentRequired(used: Int?, limit: Int?)
 }
 
 /// Talks to the Bogi backend proxy (`<baseURL>/v1/infer`). The proxy holds the model
@@ -54,6 +58,12 @@ final class BackendInferenceClient: InferenceClient {
         let text: String
     }
 
+    /// Body of a 402 response: `{ "error": "quota_exhausted", "limit": 5, "used": 5 }`.
+    private struct QuotaError: Decodable {
+        let used: Int?
+        let limit: Int?
+    }
+
     func infer(system: String?, messages: [InferenceMessage], maxTokens: Int) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/infer"))
         request.httpMethod = "POST"
@@ -71,6 +81,10 @@ final class BackendInferenceClient: InferenceClient {
 
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            if http.statusCode == 402 {
+                let info = try? JSONDecoder().decode(QuotaError.self, from: data)
+                throw InferenceError.paymentRequired(used: info?.used, limit: info?.limit)
+            }
             throw InferenceError.badStatus(http.statusCode)
         }
         let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)

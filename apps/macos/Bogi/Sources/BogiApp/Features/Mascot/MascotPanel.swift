@@ -20,7 +20,7 @@ final class MascotPanel: NSPanel {
     init(viewModel: MascotViewModel? = nil) {
         self.viewModel = viewModel ?? MascotViewModel()
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 96, height: 96),
+            contentRect: NSRect(x: 0, y: 0, width: 172, height: 184),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -45,7 +45,7 @@ final class MascotPanel: NSPanel {
         // Bottom-right of the main screen as a default resting spot.
         if let screen = NSScreen.main {
             let frame = screen.visibleFrame
-            setFrameOrigin(NSPoint(x: frame.maxX - 120, y: frame.minY + 80))
+            setFrameOrigin(NSPoint(x: frame.maxX - 196, y: frame.minY + 72))
         }
         orderFrontRegardless()
     }

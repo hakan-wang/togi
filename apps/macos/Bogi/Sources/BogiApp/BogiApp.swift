@@ -9,9 +9,16 @@ struct BogiApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("Bogi", systemImage: "fish") {
+        MenuBarExtra {
             MenuBarContent()
                 .environmentObject(appDelegate.appState)
+        } label: {
+            BogiAsset.mascot
+                .renderingMode(.original)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
+                .accessibilityLabel("Togi")
         }
 
         Settings {

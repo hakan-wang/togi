@@ -31,7 +31,7 @@ final class PlannerCommandParser {
         let nowString = iso.string(from: now)
 
         return """
-        You are the intent parser for Bogi, an accountability coach. The user spoke a short \
+        You are the intent parser for Togi, an accountability coach. The user spoke a short \
         command to schedule or move a planned block of focused time. Convert it into STRICT JSON \
         and nothing else — no prose, no markdown fences.
 

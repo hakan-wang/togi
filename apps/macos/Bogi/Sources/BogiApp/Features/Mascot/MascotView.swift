@@ -19,18 +19,22 @@ struct MascotView: View {
                 BogiAsset.mascot
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 68, height: 68)
+                    .frame(width: 108, height: 108)
+                    .saturation(look.saturation)
+                    .grayscale(look.grayscale)
                     .background(halo)
                     .shadow(color: Color(hex: 0x285078).opacity(0.30), radius: 13, y: 9)
-                    .scaleEffect(escalationScale)
-                    .bob()
+                    .scaleEffect(escalationScale * look.scale)
+                    .offset(y: look.droopY)
+                    .bob(distance: look.bobDistance, duration: look.bobDuration)
             }
             .buttonStyle(.plain)
-            .help("Open Bogi")
-            .accessibilityLabel("Bogi")
+            .help("Open Togi")
+            .accessibilityLabel("Togi")
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.bubbleText)
         .animation(.easeInOut(duration: 0.25), value: viewModel.escalationLevel)
+        .animation(.easeInOut(duration: 0.9), value: viewModel.vitality)
         .padding(8)
     }
 
@@ -39,8 +43,8 @@ struct MascotView: View {
     private var halo: some View {
         Circle()
             .fill(haloColor)
-            .blur(radius: 18)
-            .frame(width: 84, height: 84)
+            .blur(radius: 24)
+            .frame(width: 128, height: 128)
             .opacity(viewModel.mood == .idle ? 0 : 0.55)
             .animation(.easeInOut(duration: 0.4), value: viewModel.mood)
     }
@@ -57,6 +61,9 @@ struct MascotView: View {
     private var escalationScale: CGFloat {
         1.0 + (CGFloat(viewModel.escalationLevel) * 0.07)
     }
+
+    /// How alive the body looks, derived from wellbeing (0…100).
+    private var look: VitalityLook { VitalityLook(viewModel.vitality) }
 }
 
 /// Small non-modal callout above the mascot. Blunt, not naggy — copy comes from the caller.

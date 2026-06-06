@@ -12,7 +12,7 @@ struct JudgeInput {
 /// shape of what we send the LLM is unit-testable.
 enum JudgePrompt {
     static let system = """
-    You are Bogi's activity judge. You receive ~5 minutes of a user's on-screen activity \
+    You are Togi's activity judge. You receive ~5 minutes of a user's on-screen activity \
     and the calendar block they planned. Return STRICT JSON only. \
     1) Segment activity into time segments each labeled category, sub_category, sub_sub \
     (short concrete description) with minutes. \
