@@ -37,3 +37,19 @@ test("system messages are not sent as user turns (Converse needs alternating rol
   const roles = captured.messages.map((m: any) => m.role);
   expect(roles).toEqual(["user"]); // the system message must be filtered out, not mapped to user
 });
+
+test("streams text deltas via onToken and returns accumulated content", async () => {
+  const deltas: string[] = [];
+  const model = new BogiProxyChatModel({
+    // fake streaming transport: yields two text deltas then stop
+    stream: async function* () {
+      yield { type: "delta", text: "Hello " };
+      yield { type: "delta", text: "there" };
+      yield { type: "stop", stopReason: "end_turn" };
+    },
+    onToken: (t) => deltas.push(t),
+  });
+  const res = await model.invoke([new HumanMessage("hi")]);
+  expect(deltas).toEqual(["Hello ", "there"]);
+  expect(res.content).toBe("Hello there");
+});

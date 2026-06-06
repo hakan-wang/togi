@@ -6,11 +6,18 @@ import { PERSONA } from "./persona.js";
 
 export interface BogiAgentFields {
   tools: StructuredToolInterface[];
-  post: BogiProxyChatModelFields["post"];
+  post?: BogiProxyChatModelFields["post"];
+  stream?: BogiProxyChatModelFields["stream"];
+  onToken?: BogiProxyChatModelFields["onToken"];
 }
 
 export function createBogiAgent(fields: BogiAgentFields) {
-  const model = new BogiProxyChatModel({ post: fields.post, system: PERSONA });
+  const model = new BogiProxyChatModel({
+    post: fields.post,
+    stream: fields.stream,
+    onToken: fields.onToken,
+    system: PERSONA,
+  });
   // NOTE: the plan pins `createAgent` from `langchain` (the LangChain v1 API). The installed
   // `langchain@0.3.x` does not export `createAgent`; the equivalent prebuilt agent in this
   // version is `createReactAgent` from `@langchain/langgraph/prebuilt`. `systemPrompt` maps to
@@ -39,6 +46,10 @@ export function createBogiAgent(fields: BogiAgentFields) {
     };
     return rawInvoke(input as any, merged);
   };
+
+  // Expose the underlying model so the dispatcher can tag streamed token frames with the
+  // id of the in-flight request (set `model.activeRequestId` before each invoke).
+  (agent as unknown as { __bogiModel: BogiProxyChatModel }).__bogiModel = model;
 
   return agent;
 }

@@ -13,12 +13,14 @@
     "@langchain/langgraph": "^0.2.20",
     "better-sqlite3": "^11.5.0",
     "langchain": "^0.3.7",
+    "ws": "^8.21.0",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.9.0",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
