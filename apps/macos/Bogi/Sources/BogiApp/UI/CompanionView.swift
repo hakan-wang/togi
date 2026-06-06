@@ -4,7 +4,7 @@ import SwiftUI
 /// the chart button in the top toolbar flips to the dashboard (Day/Week/Month/Year
 /// insights). Styled per the brand: frosted glass, sky tint, sky-blue accent.
 struct CompanionView: View {
-    enum Page { case chat, plan, dashboard, settings }
+    enum Page { case chat, dashboard, settings }
 
     let insight: (DashboardPeriod) -> PeriodInsight
     let ask: (String) async throws -> String
@@ -39,9 +39,6 @@ struct CompanionView: View {
             iconButton("bubble.left.and.bubble.right.fill", active: page == .chat) {
                 withAnimation(.easeInOut(duration: 0.22)) { page = .chat }
             }
-            iconButton("calendar", active: page == .plan) {
-                withAnimation(.easeInOut(duration: 0.22)) { page = .plan }
-            }
             iconButton("chart.bar.fill", active: page == .dashboard) {
                 withAnimation(.easeInOut(duration: 0.22)) { page = .dashboard }
             }
@@ -73,9 +70,6 @@ struct CompanionView: View {
         case .chat:
             CoachView(ask: ask)
                 .transition(.opacity.combined(with: .move(edge: .leading)))
-        case .plan:
-            PlannerView()
-                .transition(.opacity)
         case .dashboard:
             dashboardPage
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
