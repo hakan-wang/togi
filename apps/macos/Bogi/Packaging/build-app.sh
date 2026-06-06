@@ -6,7 +6,10 @@
 # Without them, the script still builds + assembles the unsigned .app for local testing.
 set -euo pipefail
 cd "$(dirname "$0")/.."          # apps/macos/Bogi
-APP="build/Bogi.app"
+# User-facing product name. The on-disk bundle name and DMG volume name are what
+# Finder shows, so these MUST be "Togi" (the executable inside stays "Bogi" to match
+# CFBundleExecutable). Anything named Bogi here leaks the internal name to users.
+APP="build/Togi.app"
 PKG="Packaging"
 
 echo "== build release =="
@@ -66,13 +69,22 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
   codesign --verify --deep --strict --verbose=2 "$APP"
 
   echo "== dmg =="
-  rm -f build/Bogi.dmg
-  hdiutil create -volname Bogi -srcfolder "$APP" -ov -format UDZO build/Bogi.dmg
+  rm -f build/Togi.dmg
+  # Stage the DMG contents so the mounted window offers a drag-to-install layout:
+  # the app next to an /Applications symlink. Without the symlink users just see a
+  # lone icon and don't know to drag it into Applications.
+  DMG_STAGE="build/dmg-stage"
+  rm -rf "$DMG_STAGE"
+  mkdir -p "$DMG_STAGE"
+  cp -R "$APP" "$DMG_STAGE/"
+  ln -s /Applications "$DMG_STAGE/Applications"
+  hdiutil create -volname Togi -srcfolder "$DMG_STAGE" -ov -format UDZO build/Togi.dmg
+  rm -rf "$DMG_STAGE"
 
   if [ -n "${NOTARY_PROFILE:-}" ]; then
     echo "== notarize + staple =="
-    xcrun notarytool submit build/Bogi.dmg --keychain-profile "$NOTARY_PROFILE" --wait
-    xcrun stapler staple build/Bogi.dmg
+    xcrun notarytool submit build/Togi.dmg --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple build/Togi.dmg
     xcrun stapler staple "$APP"
   else
     echo "NOTARY_PROFILE unset — skipping notarization (DMG is signed but not notarized)."
