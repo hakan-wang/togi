@@ -36,6 +36,10 @@ final class SidecarClient {
         try await request(kind: "plan", threadId: threadId, text: text)
     }
 
+    func judge(_ text: String, threadId: String) async throws -> String {
+        try await request(kind: "judge", threadId: threadId, text: text)
+    }
+
     private func request(kind: String, threadId: String, text: String) async throws -> String {
         let id = nextId()
         let payload: [String: Any] = ["kind": kind, "id": id, "threadId": threadId, "text": text]

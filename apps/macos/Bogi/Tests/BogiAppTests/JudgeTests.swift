@@ -32,25 +32,6 @@ final class JudgeTests: XCTestCase {
     }
     """
 
-    // An on-task reply: one segment matching the plan, no nudge.
-    private let onTaskJSON = """
-    {
-      "segments": [
-        {
-          "start_at": "2026-06-06T10:00:00Z",
-          "end_at": "2026-06-06T10:05:00Z",
-          "minutes": 5.0,
-          "category": "Work",
-          "sub_category": "Coding",
-          "sub_sub": "Editing JudgeService.swift",
-          "on_task": true,
-          "confidence": 0.95
-        }
-      ],
-      "nudge": { "should": false, "severity": 0, "message": null }
-    }
-    """
-
     // MARK: - parse
 
     func testParseCleanJSON() throws {
@@ -83,51 +64,7 @@ final class JudgeTests: XCTestCase {
         XCTAssertThrowsError(try JudgeOutput.parse("no json here, sorry"))
     }
 
-    // MARK: - runOnce
-
-    private func makeInput() -> JudgeInput {
-        let start = ISO8601DateFormatter().date(from: "2026-06-06T10:00:00Z")!
-        return JudgeInput(
-            activeBlock: (title: "Deep work", category: "Work",
-                          startAt: start, endAt: start.addingTimeInterval(3600)),
-            observations: [
-                (t: start, app: "X", window: "Home", text: "scrolling", focused: true),
-            ],
-            recentOffTaskMinutes: 0
-        )
-    }
-
-    func testRunOnceWritesSegmentsAndReturnsNudge() async throws {
-        let db = try DatabaseService(inMemory: true)
-        let store = SegmentStore(database: db)
-        let inference = MockInferenceClient(response: offTaskJSON)
-        let fixedNow = Date(timeIntervalSince1970: 1_000_000)
-        let service = JudgeService(inference: inference, segmentStore: store, clock: { fixedNow })
-
-        let run = try await service.runOnce(input: makeInput())
-
-        XCTAssertEqual(store.count(), 2)
-        XCTAssertEqual(run.segments.count, 2)
-        XCTAssertEqual(run.segments.first?.onTask, false)
-        XCTAssertTrue(run.nudge.should)
-        XCTAssertEqual(run.nudge.severity, 2)
-        // The judge actually built and sent a prompt.
-        XCTAssertEqual(inference.lastSystem, JudgePrompt.system)
-        XCTAssertEqual(inference.lastMessages.first?.role, "user")
-    }
-
-    func testRunOnceOnTaskYieldsNoNudge() async throws {
-        let db = try DatabaseService(inMemory: true)
-        let store = SegmentStore(database: db)
-        let inference = MockInferenceClient(response: onTaskJSON)
-        let service = JudgeService(inference: inference, segmentStore: store)
-
-        let run = try await service.runOnce(input: makeInput())
-
-        XCTAssertEqual(store.count(), 1)
-        XCTAssertEqual(run.segments.count, 1)
-        XCTAssertFalse(run.nudge.should)
-    }
+    // MARK: - userJSON
 
     func testUserJSONIncludesFocusedFlag() {
         let input = JudgeInput(
@@ -137,12 +74,5 @@ final class JudgeTests: XCTestCase {
             recentOffTaskMinutes: 0)
         let json = JudgePrompt.userJSON(input)
         XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
-    }
-
-    func testSegmentationPromptIsSegmentationOnly() {
-        XCTAssertTrue(JudgePrompt.system.contains("segmenter"),
-                      "prompt should describe a segmenter, not a nudger")
-        XCTAssertFalse(JudgePrompt.system.lowercased().contains("preachy"),
-                       "old nudge-wording should be gone")
     }
 }

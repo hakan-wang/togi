@@ -24,8 +24,6 @@ final class AppState: ObservableObject {
     let sidecar: SidecarClient
     private let sidecarTransport: ProcessSidecarTransport
     let coach: CoachService
-    let judge: JudgeService
-    let nudgeGate = NudgeGate()
 
     @Published var capturePaused: Bool {
         didSet {
@@ -34,9 +32,21 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// User preference for whether the floating mascot is on screen. Persisted so it
+    /// survives relaunch; the panel itself lives in AppDelegate, so changes route out
+    /// through `onMascotVisibilityChanged`.
+    @Published var mascotVisible: Bool {
+        didSet {
+            settings.setBool("mascot_visible", mascotVisible)
+            onMascotVisibilityChanged?(mascotVisible)
+        }
+    }
+
     /// Wired by the AppDelegate after launch (menu-bar actions call these).
     var openDashboard: (() -> Void)?
     var runJudgeNow: (() -> Void)?
+    /// Wired by the AppDelegate to show/hide the mascot panel when the preference flips.
+    var onMascotVisibilityChanged: ((Bool) -> Void)?
 
     /// Set by the AppDelegate after launch; drives the Calendars settings UI.
     @Published var calendarSync: CalendarSyncCoordinator?
@@ -102,11 +112,12 @@ final class AppState: ObservableObject {
 
         self.planner = PlannerService(repository: plannedBlocks, sidecar: sidecar)
         self.coach = CoachService(backend: sidecar, threadId: "coach")
-        self.judge = JudgeService(inference: inference, segmentStore: segments)
 
         let paused = settings.bool("paused", default: false)
         self.capturePaused = paused
         capture.isPaused = paused
+
+        self.mascotVisible = settings.bool("mascot_visible", default: true)
     }
 
     /// Inject a freshly-fetched auth token into the sidecar's environment, then launch it.
@@ -114,6 +125,12 @@ final class AppState: ObservableObject {
     func startSidecar() async {
         let token = await auth.currentAccessToken() ?? ""
         sidecarTransport.environment["BOGI_AUTH_TOKEN"] = token
+        // The WebSocket streaming API is not deployed yet. Only pass BOGI_WS_URL when it is
+        // explicitly provided in the environment; otherwise leave it unset so the sidecar
+        // uses its HTTP /v1/infer fallback.
+        if let wsURL = ProcessInfo.processInfo.environment["BOGI_WS_URL"] {
+            sidecarTransport.environment["BOGI_WS_URL"] = wsURL
+        }
         do { try sidecar.start() } catch {
             NSLog("Bogi: failed to start sidecar: \(error)")
         }
@@ -153,12 +170,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let mascot = MascotPanel()
         mascot.onActivate = { [weak self] in self?.toggleCompanion() }
-        mascot.show()
+        if appState.mascotVisible { mascot.show() }
         self.mascot = mascot
+        appState.onMascotVisibilityChanged = { [weak self] visible in
+            if visible { self?.mascot?.show() } else { self?.mascot?.hide() }
+        }
 
-        // Wire the agent's action tools to app-only side effects: calendar writes + nudges.
+        // Wire the agent's action tools to app-only side effects: calendar writes, nudges,
+        // and persisting the segments the agent produced from recent activity.
         let planner = appState.planner
         let presenter = self.presenter
+        let segmentStore = appState.segments
         let actions = SidecarActionHandlers(
             createBlock: { title, start, end in
                 await MainActor.run {
@@ -176,6 +198,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let decision = presenter.present(message: message, now: Date())
                     self.applyNudge(decision, onTask: false)
                 }
+            },
+            recordSegments: { segs in
+                await MainActor.run {
+                    segs.forEach { segmentStore.insert($0) }
+                    return segs.count
+                }
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 
@@ -183,15 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await self.appState.startSidecar() }
 
         let coordinator = JudgeCoordinator(
-            judge: appState.judge,
             observations: appState.observations,
             blocks: appState.plannedBlocks,
-            presenter: presenter,
-            nudgeGate: appState.nudgeGate,
             sidecar: appState.sidecar
-        ) { [weak self] decision, onTask in
-            self?.applyNudge(decision, onTask: onTask)
-        }
+        )
         coordinator.start()
         self.coordinator = coordinator
 
@@ -208,10 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
         guard let mascot else { return }
         if decision.show {
+            // Auto-reappear even when hidden, so a real nudge still reaches the user.
+            mascot.show()
             mascot.apply(decision)
             if decision.playSound { NSSound.beep() }
         } else {
             mascot.update(mood: onTask ? .onTask : .offTask)
+            // Settle back to hidden once the nudge has passed, honoring the preference.
+            if !appState.mascotVisible { mascot.hide() }
         }
     }
 

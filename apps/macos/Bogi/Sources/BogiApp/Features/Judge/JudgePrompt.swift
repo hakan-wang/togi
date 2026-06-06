@@ -8,19 +8,10 @@ struct JudgeInput {
     var recentOffTaskMinutes: Int
 }
 
-/// Builds the system + user prompt for the activity judge. Pure string construction so the
-/// shape of what we send the LLM is unit-testable.
+/// Builds the user payload for the activity judge tick. Pure string construction so the
+/// shape of what we send the agent is unit-testable. The persona/segmentation instructions
+/// now live in the sidecar agent; this only serializes the observations + active block.
 enum JudgePrompt {
-    static let system = """
-    You are Bogi's activity segmenter. You receive ~5 minutes of a user's on-screen activity \
-    (the focused window is marked) and the calendar block they planned. Return STRICT JSON only. \
-    1) Segment activity into time segments each labeled category, sub_category, sub_sub \
-    (short concrete description) with minutes. \
-    2) Judge on_task: does the dominant activity match the planned block's intent? \
-    Always set the should field of the nudge object to false; that decision is made elsewhere. \
-    Never use em-dashes.
-    """
-
     // Expected output JSON shape (strict, no prose):
     // {
     //   "segments": [
