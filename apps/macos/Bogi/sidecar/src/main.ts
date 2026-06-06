@@ -4,7 +4,7 @@ interface AgentLike { invoke(input: unknown, config?: unknown): Promise<{ messag
 
 export function makeDispatcher(deps: { agent: AgentLike; write: (line: string) => void }) {
   return async function dispatch(msg: Inbound): Promise<void> {
-    if (msg.kind === "chat" || msg.kind === "plan") {
+    if (msg.kind === "chat" || msg.kind === "plan" || msg.kind === "judge") {
       try {
         const res = await deps.agent.invoke(
           { messages: [{ role: "user", content: msg.text }] },
@@ -47,7 +47,12 @@ export async function runStdio(): Promise<void> {
       process.stdout.write(JSON.stringify({ kind: "action_call", id: "agent", callId, name, input }) + "\n");
     });
 
-  const tools = [...makeReadTools(() => openReadOnly(dbPath)), ...makeActionTools(callAction)];
+  const { makeRecordTools } = await import("./tools/recordTools.js");
+  const tools = [
+    ...makeReadTools(() => openReadOnly(dbPath)),
+    ...makeActionTools(callAction),
+    ...makeRecordTools(callAction),
+  ];
   const agent = createBogiAgent({ tools, post });
   const dispatch = makeDispatcher({ agent, write: (l) => process.stdout.write(l) });
   const decoder = new LineDecoder((m) => {

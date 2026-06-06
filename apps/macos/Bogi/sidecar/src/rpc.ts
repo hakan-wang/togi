@@ -1,6 +1,7 @@
 export type Inbound =
   | { kind: "chat"; id: string; threadId: string; text: string }
   | { kind: "plan"; id: string; threadId: string; text: string }
+  | { kind: "judge"; id: string; threadId: string; text: string }
   | { kind: "nudge_tick"; id: string; threadId: string; payload: unknown }
   | { kind: "action_result"; id: string; ok: boolean; result?: unknown; message?: string };
 
