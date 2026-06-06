@@ -15,7 +15,9 @@ final class GoogleCalendarService {
     /// OAuth + API endpoints.
     private static let authorizeEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     private static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
-    private static let calendarScope = "https://www.googleapis.com/auth/calendar"
+    // Read-only: Bogi only reads your planned events (intent). Minimal scope = easier
+    // Google verification and a smaller ask on the consent screen.
+    private static let calendarScope = "https://www.googleapis.com/auth/calendar.events.readonly"
     private static let eventsListBase = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 
     private let tokenStore: KeychainTokenStore
