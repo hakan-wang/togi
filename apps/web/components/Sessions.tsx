@@ -5,11 +5,11 @@
 "use client";
 import * as React from "react";
 import { useState } from "react";
-import { CATEGORIES, DISCREPANCIES, SESSION_FEED } from "../lib/data";
+import { DOMAINS, domainShort, DISCREPANCIES, SESSION_FEED } from "../lib/data";
 import { IcArrow, IcCheck, IcMic, IcPlan, IcReturn, IcSpark, IcTrash, IcWave } from "./icons";
 
 function SessionRow({ data, onOpenSession }: any) {
-  const C = data.cat ? CATEGORIES[data.cat] : null;
+  const C = data.domain ? DOMAINS[data.domain] : null;
   const isPlanning = data.kind === "planning";
   const isMorning = data.kind === "morning";
   const icon = isPlanning ? <IcPlan size={17} /> : isMorning ? <IcSpark size={16} /> : <IcMic size={16} />;
@@ -30,7 +30,7 @@ function SessionRow({ data, onOpenSession }: any) {
       <div className="ses-main">
         <div className="ses-title-row">
           <span className="ses-title">{label}</span>
-          {C && <span className="ses-chip"><span className="cat-swatch" style={{ background: C.color }} />{C.label}</span>}
+          {C && <span className="ses-chip"><span className="cat-swatch" style={{ background: C.color }} />{domainShort(data.domain)}</span>}
         </div>
         <div className="ses-sub">{data.note || data.window || ""}</div>
       </div>
@@ -56,7 +56,7 @@ function PlannedNotDone() {
   return (
     <div className="pnd-list">
       {items.map((t) => {
-        const C = CATEGORIES[t.cat];
+        const C = DOMAINS[t.domain];
         return (
           <div className="pnd-row" key={t.id}>
             <span className="cat-swatch" style={{ background: C.color, marginTop: 6 }} />

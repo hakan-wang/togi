@@ -7,7 +7,7 @@
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { CATEGORIES, PLAN, REAL_SEED, RealEntry } from "../lib/data";
+import { CATEGORIES, DOMAINS, Domain, PLAN, REAL_SEED, RealEntry } from "../lib/data";
 import { MessageBubble, Composer } from "./ds";
 import { IcArrow, IcArrowUp, IcClose, IcMic } from "./icons";
 
@@ -67,13 +67,13 @@ function dur(r: RealEntry) { const p = r.slot ? PLAN.find((x) => x.id === r.slot
 
 function Breakdown() {
   const totals: Record<string, number> = {};
-  REAL_SEED.forEach((b) => { totals[b.cat] = (totals[b.cat] || 0) + dur(b); });
+  REAL_SEED.forEach((b) => { totals[b.domain] = (totals[b.domain] || 0) + dur(b); });
   const max = Math.max(...Object.values(totals), 1);
   const order = Object.entries(totals).sort((a, b) => b[1] - a[1]);
   return (
     <div className="sx-card sx-break">
       {order.map(([cat, m]) => {
-        const C = CATEGORIES[cat as keyof typeof CATEGORIES];
+        const C = DOMAINS[cat as Domain];
         const h = Math.floor(m / 60), mm = m % 60;
         return (
           <div className="brk-row" key={cat}>

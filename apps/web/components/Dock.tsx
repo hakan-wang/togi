@@ -5,7 +5,7 @@
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { CATEGORIES, COACH_ACK, DISCREPANCIES, INSIGHT } from "../lib/data";
+import { COACH_ACK, INSIGHT } from "../lib/data";
 import { IcArrow, IcCheck, IcChevron, IcMic, IcPlan, IcReturn, IcSpark, IcTrash, IcWave } from "./icons";
 
 function DockInsight({ onOpenSession }: any) {

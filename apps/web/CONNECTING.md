@@ -47,15 +47,44 @@ Groq is free (no credit card) and fast. We use it for speech-to-text.
    below → **Run** (it should say "Success").
 
    ```sql
+   -- Projects: your named endeavors (created only when you declare one).
+   create table if not exists projects (
+     id uuid primary key default gen_random_uuid(),
+     user_id uuid references auth.users on delete cascade,
+     name text not null,
+     created_at timestamptz default now(),
+     unique (user_id, name)
+   );
+   alter table projects enable row level security;
+   create policy "own projects" on projects
+     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+   -- Activities: your reusable verb vocabulary (Togi can add new ones; you can edit later).
+   create table if not exists activities (
+     id uuid primary key default gen_random_uuid(),
+     user_id uuid references auth.users on delete cascade,
+     name text not null,
+     created_at timestamptz default now(),
+     unique (user_id, name)
+   );
+   alter table activities enable row level security;
+   create policy "own activities" on activities
+     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+   -- Real entries: the 4-field model (domain · project · activity · note).
+   drop table if exists real_entries;
    create table real_entries (
      id uuid primary key default gen_random_uuid(),
      user_id uuid references auth.users on delete cascade,
-     category text not null,
-     sub_category text not null,
-     description text not null,
+     title text,
+     domain text not null,
+     project text,
+     activity text not null,
+     note text,
      duration_min int,
      matched_plan_id text,
      matched boolean default false,
+     confidence real,
      transcript text,
      started_at timestamptz,
      created_at timestamptz default now()

@@ -6,7 +6,7 @@
 "use client";
 import * as React from "react";
 import { useState } from "react";
-import { CATEGORIES, SHORT_TERM_INSIGHTS } from "../lib/data";
+import { CATEGORIES, DOMAINS, SHORT_TERM_INSIGHTS } from "../lib/data";
 import { IcArrow, IcCheck, IcMic, IcSpark } from "./icons";
 
 export function InsightsPage({ onOpenSession }: any) {
@@ -30,7 +30,7 @@ export function InsightsPage({ onOpenSession }: any) {
       </div>
       <div className="pattern-grid">
         {SHORT_TERM_INSIGHTS.map((p) => {
-          const C = CATEGORIES[p.cat];
+          const C = DOMAINS[p.domain];
           const isOn = applied[p.id];
           return (
             <div className="pattern-card" key={p.id} style={{ ["--c" as any]: C.color }}>

@@ -1,26 +1,30 @@
 /* ============================================================
    Togi — client-side capture pipeline helpers.
-   transcribeAudio() → POST /api/transcribe (OpenAI Whisper, server-side)
-   categorizeText()  → POST /api/categorize (existing backend /v1/infer, server-side)
-   Both go through Next.js API routes so keys/tokens never touch the browser.
+   transcribeAudio() → POST /api/transcribe (Groq/OpenAI Whisper)
+   categorizeText()  → POST /api/categorize (categorizer per spec), passing the
+   user's existing projects + activities so the LLM reuses labels.
    ============================================================ */
-import { CategoryKey } from "./data";
-import { ensureSession } from "./supabase";
+import { Domain } from "./data";
+import { Vocabulary } from "./store";
 
 export interface CategorizeResult {
-  category: CategoryKey;
-  subCategory: string;
-  description: string;
-  durationMin: number | null;
-  matchedPlanId: string | null;
+  title: string;
+  domain: Domain;
+  project: string | null;
+  activity: string;
+  note: string | null;
+  confidence: number;
+  clarify_question: string | null;
   matched: boolean;
+  durationMin: number | null;
+  via?: string;
 }
 
 export interface CheckinContext {
-  block?: string;      // the block that just ended, e.g. "Formula v3 doc"
-  planId?: string;     // its plan id, for matching
-  window?: string;     // e.g. "11:15–12:00"
-  kind?: string;       // checkin | self | ask | plan
+  block?: string;
+  planId?: string;
+  window?: string;
+  kind?: string;
 }
 
 export async function transcribeAudio(blob: Blob): Promise<string> {
@@ -32,18 +36,11 @@ export async function transcribeAudio(blob: Blob): Promise<string> {
   return (json.text || "").trim();
 }
 
-export async function categorizeText(text: string, ctx: CheckinContext = {}): Promise<CategorizeResult> {
-  // Pass the Supabase access token (if signed in) so the backend authorizes the Claude call.
-  let token: string | undefined;
-  try {
-    const sb = await ensureSession();
-    if (sb) token = (await sb.auth.getSession()).data.session?.access_token;
-  } catch { /* ignore */ }
-
+export async function categorizeText(text: string, ctx: CheckinContext, vocab: Vocabulary): Promise<CategorizeResult> {
   const res = await fetch("/api/categorize", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, context: ctx, token }),
+    body: JSON.stringify({ text, context: ctx, projects: vocab.projects, activities: vocab.activities }),
   });
   if (!res.ok) throw new Error(`categorize failed (${res.status})`);
   return (await res.json()) as CategorizeResult;

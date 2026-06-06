@@ -1,63 +1,67 @@
 /* ============================================================
-   POST /api/categorize  — { text, context, token } → CategorizeResult
-   Primary brain: the existing deployed Togi backend (/v1/infer, Claude via Bedrock,
-   tool/structured output). The Supabase access token (when signed in) is forwarded
-   so the backend authorizes the call.
+   POST /api/categorize  → the categorizer (per togi_categorization_spec.md)
+   Body: { text, context:{block,planId,window,kind}, projects:string[], activities:string[], token? }
+   Returns: { title, domain, project|null, activity, note|null, confidence, clarify_question|null, via }
 
-   Resilience (so the vertical slice is never dead): if the backend is unreachable or
-   rejects the call (e.g. no token / quota), we fall back to OpenAI structured output
-   if a key exists, and finally to a deterministic keyword classifier. The path is
-   reported back in `via` for debugging.
+   Hard rules enforced in CODE (not trusted to the prompt):
+   - domain must be one of the 7 enum values → one retry, else keyword fallback.
+   - project/activity fuzzy-matched against the user's existing labels (dedupe).
+   - project is only ever a NEW name if the model returned one (prompt only does that
+     when the user declared it); otherwise null.
+   - JSON validated/normalized before returning.
+   Provider: Groq LLM (free) primary; OpenAI fallback; deterministic keyword last resort.
    ============================================================ */
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const CATEGORY_KEYS = ["deepwork", "creative", "admin", "health", "social", "errands", "leisure", "scroll", "personal"];
+const DOMAINS = ["Work", "Study", "Health", "Social", "Errands & life admin", "Leisure", "Distraction"] as const;
 
-const TOOL = {
-  name: "log_entry",
-  description: "Record one categorized Real time-entry from the user's spoken/typed check-in.",
-  input_schema: {
-    type: "object",
-    properties: {
-      category: { type: "string", enum: CATEGORY_KEYS, description: "Broad bucket." },
-      subCategory: { type: "string", description: "Specific recurring activity, e.g. Litro, TikTok, Gym, Editing, Suppliers. Reuse existing labels when they fit." },
-      description: { type: "string", description: "Short detail of what actually happened (max ~8 words)." },
-      durationMin: { type: ["integer", "null"], description: "Minutes spent if stated or clearly implied, else null." },
-      matchedPlanId: { type: ["string", "null"], description: "The provided planId if this activity matches the planned block, else null." },
-      matched: { type: "boolean", description: "True if reality matched the planned intention." },
-    },
-    required: ["category", "subCategory", "description", "matched"],
-  },
-};
-
-function systemPrompt(ctx: any) {
+function systemPrompt(ctx: any, projects: string[], activities: string[]) {
   return [
-    "You are Togi, an accountability coach. Categorize one check-in into exactly three levels:",
-    "Category > Sub-category > Description. Call the log_entry tool once. Do not write prose.",
-    `Allowed categories: ${CATEGORY_KEYS.join(", ")}.`,
-    "Reuse consistent sub-category labels over time (Litro, TikTok, Gym, Editing, Suppliers, Town, Friends, Meals, Tidying).",
-    "Map social media / doom-scrolling to category 'scroll'. Map focused project work to 'deepwork' or 'creative'.",
-    ctx?.block ? `The block that just ended: "${ctx.block}"${ctx.planId ? ` (planId ${ctx.planId})` : ""}${ctx.window ? `, scheduled ${ctx.window}` : ""}. If the user describes doing that, set matchedPlanId to its planId and matched=true; if they did something else, matched=false and matchedPlanId=null.` : "No specific planned block; treat as self check-in (matched=false, matchedPlanId=null).",
+    "You categorize one time entry for a personal time-clarity app. Input: a cleaned speech-to-text transcript of what the user did (or plans to do), plus the time range, plus the user's existing PROJECTS and ACTIVITIES lists.",
+    "",
+    "Return ONLY valid JSON matching the schema. No prose.",
+    "",
+    "Rules:",
+    `- domain: choose exactly one of: ${DOMAINS.map((d) => `"${d}"`).join(", ")}. Never invent a domain. Leisure = chosen recreation; Distraction = unintentional time sinks the user regrets (doomscrolling, "fell into TikTok"). Prefer the user's own framing when ambiguous.`,
+    "- project: reuse an existing project label whenever one plausibly matches, even if wording differs. Never invent a project yourself: only set a NEW project when the user explicitly declares or names one in the input. Otherwise project: null. Most non-work entries have project: null.",
+    "- activity: pick from the existing ACTIVITIES list whenever possible; consistency beats precision. If nothing fits, create a new 1-3 word verb-first term reusable across projects.",
+    "- note: a cleaned one-line summary in the user's own language, max 12 words, ONLY if it adds information beyond domain+project+activity. Otherwise null. Never copy rambling transcript text.",
+    "- title: a short human-readable calendar block title, 2-5 words (e.g. \"Email co-manufacturers\", \"Fell into TikTok\"). English.",
+    "- confidence: 0-1. If below 0.6, also fill clarify_question with ONE short question Togi can ask the user.",
+    "",
+    `EXISTING PROJECTS: ${projects.length ? projects.join(", ") : "(none yet)"}`,
+    `EXISTING ACTIVITIES: ${activities.length ? activities.join(", ") : "(none yet)"}`,
+    ctx?.block
+      ? `CONTEXT: the block that just ended is "${ctx.block}"${ctx.window ? ` (${ctx.window})` : ""}. If the user describes doing that, matched=true; if they did something else, matched=false.`
+      : "CONTEXT: no specific planned block (self check-in).",
+    "",
+    'JSON schema: {"title":string,"domain":one-of-the-7,"project":string|null,"activity":string,"note":string|null,"confidence":number,"clarify_question":string|null,"matched":boolean}',
   ].join("\n");
 }
 
-const FALLBACK_KEYWORDS: Array<[RegExp, { category: string; subCategory: string }]> = [
-  [/scroll|tiktok|instagram|insta|reels|twitter|youtube|phone/i, { category: "scroll", subCategory: "TikTok" }],
-  [/gym|workout|run|lift|strength|exercise/i, { category: "health", subCategory: "Gym" }],
-  [/edit|vlog|video|footage|cut /i, { category: "creative", subCategory: "Editing" }],
-  [/email|reply|inbox|supplier|manufactur/i, { category: "admin", subCategory: "Suppliers" }],
-  [/litro|formula|doc|write|wrote|thesis|read/i, { category: "deepwork", subCategory: "Litro" }],
-  [/friend|cinema|movie|hang|dinner|party/i, { category: "social", subCategory: "Friends" }],
-  [/shop|errand|post office|return|grocery|town/i, { category: "errands", subCategory: "Town" }],
-  [/clean|tidy|laundry|dishes|desk/i, { category: "personal", subCategory: "Tidying" }],
-  [/eat|lunch|meal|cook|nap|rest|relax/i, { category: "leisure", subCategory: "Break" }],
-];
+function normDomain(d: any): string | null {
+  if (!d) return null;
+  const t = String(d).trim().toLowerCase();
+  for (const dom of DOMAINS) if (dom.toLowerCase() === t) return dom;
+  if (t.startsWith("errand") || t.includes("life admin")) return "Errands & life admin";
+  return null;
+}
+
+// fuzzy-snap a label to an existing one (exact, then substring); else keep as-is (new)
+function snap(name: any, list: string[]): string | null {
+  if (name == null || name === "") return null;
+  const n = String(name).trim();
+  const nl = n.toLowerCase();
+  for (const x of list) if (x.trim().toLowerCase() === nl) return x;
+  for (const x of list) { const xl = x.trim().toLowerCase(); if (xl && (xl.includes(nl) || nl.includes(xl))) return x; }
+  return n;
+}
 
 function parseDuration(text: string): number | null {
-  const h = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hour|hr)/i);
+  const h = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hour|hr|timm)/i);
   const m = text.match(/(\d+)\s*(?:m|min)/i);
   let mins = 0;
   if (h) mins += Math.round(parseFloat(h[1]) * 60);
@@ -65,116 +69,79 @@ function parseDuration(text: string): number | null {
   return mins || null;
 }
 
-function shortPhrase(text: string, max = 42): string {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= max) return clean;
-  const cut = clean.slice(0, max);
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > 12 ? cut.slice(0, lastSpace) : cut) + "…";
+const KW: Array<[RegExp, { domain: string; activity: string }]> = [
+  [/scroll|tiktok|instagram|insta|reels|doomscroll|fell into/i, { domain: "Distraction", activity: "Scrolling" }],
+  [/gym|workout|run|lift|strength|exercise|padel|walk/i, { domain: "Health", activity: "Gym" }],
+  [/edit|vlog|film|footage|cut /i, { domain: "Work", activity: "Editing" }],
+  [/email|mail|supplier|manufactur|inbox/i, { domain: "Work", activity: "Email" }],
+  [/wrote|writing|doc|formula|thesis|essay/i, { domain: "Work", activity: "Writing" }],
+  [/stud|exam|homework|revis|course/i, { domain: "Study", activity: "Studying" }],
+  [/read/i, { domain: "Leisure", activity: "Reading" }],
+  [/friend|cinema|movie|hang|dinner|party|family|call/i, { domain: "Social", activity: "Hanging out" }],
+  [/shop|errand|post office|return|grocery|commut|clean|laundry|dishes/i, { domain: "Errands & life admin", activity: "Errands" }],
+  [/eat|lunch|meal|cook|nap|rest|relax|game|gaming|watch|netflix/i, { domain: "Leisure", activity: "Resting" }],
+];
+function keywordResult(text: string) {
+  let hit = { domain: "Work", activity: "Deep work" };
+  for (const [re, v] of KW) if (re.test(text)) { hit = v; break; }
+  const words = text.replace(/\s+/g, " ").trim().split(" ").slice(0, 4).join(" ");
+  return { title: words.charAt(0).toUpperCase() + words.slice(1), domain: hit.domain, project: null, activity: hit.activity, note: null, confidence: 0.7, clarify_question: null, matched: false };
 }
 
-function keywordFallback(text: string, ctx: any) {
-  let cat = { category: "personal", subCategory: "General" };
-  for (const [re, c] of FALLBACK_KEYWORDS) if (re.test(text)) { cat = c; break; }
-  const matched = !!ctx?.planId && new RegExp((ctx.block || "").split(/\s+/).slice(0, 2).join("|"), "i").test(text);
+async function callLLM(baseURL: string | undefined, key: string, model: string, sys: string, user: string) {
+  const OpenAI = (await import("openai")).default;
+  const client = new OpenAI({ apiKey: key, baseURL });
+  const r = await client.chat.completions.create({
+    model, temperature: 0,
+    messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+    response_format: { type: "json_object" },
+  });
+  return JSON.parse(r.choices[0]?.message?.content || "{}");
+}
+
+function finalize(obj: any, text: string, projects: string[], activities: string[], via: string) {
+  const domain = normDomain(obj.domain);
+  if (!domain) return null; // signal caller to retry
   return {
-    category: cat.category,
-    subCategory: cat.subCategory,
-    description: shortPhrase(text),
-    durationMin: parseDuration(text),
-    matchedPlanId: matched ? ctx.planId : null,
-    matched,
+    title: (obj.title && String(obj.title).slice(0, 60)) || text.split(/\s+/).slice(0, 4).join(" "),
+    domain,
+    project: snap(obj.project, projects),                 // null stays null; existing snaps; new kept
+    activity: snap(obj.activity, activities) || "Deep work",
+    note: obj.note ? String(obj.note).slice(0, 90) : null,
+    confidence: typeof obj.confidence === "number" ? obj.confidence : 0.75,
+    clarify_question: obj.clarify_question || null,
+    matched: !!obj.matched,
+    durationMin: obj.durationMin ?? parseDuration(text),
+    via,
   };
 }
 
 export async function POST(req: NextRequest) {
-  const { text, context = {}, token } = await req.json();
+  const { text, context = {}, projects = [], activities = [] } = await req.json();
   if (!text || !text.trim()) return NextResponse.json({ error: "no_text" }, { status: 400 });
 
-  const messages = [{ role: "user", content: `Check-in: "${text}"` }];
+  const sys = systemPrompt(context, projects, activities);
+  const userMsg = `Time entry transcript: "${text}"${context.window ? `\nTime range: ${context.window}` : ""}`;
 
-  // 1) Primary: the deployed Togi backend (Claude + tools)
-  const base = process.env.BACKEND_BASE_URL;
-  if (base) {
-    try {
-      const res = await fetch(`${base}/v1/infer`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "X-Bogi-Authorization": `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ system: systemPrompt(context), messages, tools: [TOOL], maxTokens: 400, temperature: 0 }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const tool = (data.content || []).find((c: any) => c.type === "tool_use");
-        if (tool?.input) {
-          return NextResponse.json(normalize(tool.input, text, context, "backend"));
-        }
-      } else {
-        console.warn("backend categorize non-200:", res.status);
+  // Provider chain: Groq → OpenAI. Each gets ONE retry if the domain is invalid.
+  const providers: Array<{ via: string; baseURL?: string; key?: string; model: string }> = [];
+  if (process.env.GROQ_API_KEY) providers.push({ via: "groq", baseURL: "https://api.groq.com/openai/v1", key: process.env.GROQ_API_KEY, model: "llama-3.3-70b-versatile" });
+  if (process.env.OPENAI_API_KEY) providers.push({ via: "openai", key: process.env.OPENAI_API_KEY, model: "gpt-4o-mini" });
+
+  for (const p of providers) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const sysMsg = attempt === 0 ? sys : sys + `\n\nIMPORTANT: domain MUST be exactly one of ${DOMAINS.join(" | ")}.`;
+        const obj = await callLLM(p.baseURL, p.key!, p.model, sysMsg, userMsg);
+        const out = finalize(obj, text, projects, activities, p.via);
+        if (out) return NextResponse.json(out);
+      } catch (e) {
+        console.warn(`categorize ${p.via} attempt ${attempt} error:`, e);
+        break; // network/parse error → next provider
       }
-    } catch (e) {
-      console.warn("backend categorize error:", e);
     }
   }
 
-  // 2) Groq LLM structured output (free; reuses the transcription key). Real LLM
-  //    categorization without needing backend auth — great default for the demo.
-  if (process.env.GROQ_API_KEY) {
-    try {
-      const OpenAI = (await import("openai")).default;
-      const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
-      const r = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        temperature: 0,
-        messages: [
-          { role: "system", content: systemPrompt(context) + "\nRespond ONLY with a JSON object: {category, subCategory, description, durationMin, matchedPlanId, matched}." },
-          { role: "user", content: `Check-in: "${text}"` },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const obj = JSON.parse(r.choices[0]?.message?.content || "{}");
-      return NextResponse.json(normalize(obj, text, context, "groq"));
-    } catch (e) {
-      console.warn("groq categorize error:", e);
-    }
-  }
-
-  // 3) Fallback: OpenAI structured output (if a key is present)
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const OpenAI = (await import("openai")).default;
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const r = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0,
-        messages: [
-          { role: "system", content: systemPrompt(context) + "\nRespond ONLY with JSON: {category, subCategory, description, durationMin, matchedPlanId, matched}." },
-          { role: "user", content: `Check-in: "${text}"` },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const obj = JSON.parse(r.choices[0]?.message?.content || "{}");
-      return NextResponse.json(normalize(obj, text, context, "openai"));
-    } catch (e) {
-      console.warn("openai categorize error:", e);
-    }
-  }
-
-  // 3) Last resort: deterministic keyword classifier (always works, no network)
-  return NextResponse.json({ ...normalize(keywordFallback(text, context), text, context, "keyword") });
-}
-
-function normalize(o: any, text: string, ctx: any, via: string) {
-  const category = CATEGORY_KEYS.includes(o.category) ? o.category : "personal";
-  return {
-    category,
-    subCategory: o.subCategory || "General",
-    description: o.description || text.slice(0, 60),
-    durationMin: o.durationMin ?? parseDuration(text),
-    matchedPlanId: o.matchedPlanId ?? null,
-    matched: !!o.matched,
-    via,
-  };
+  // Last resort: deterministic keyword classifier (always valid schema)
+  return NextResponse.json(finalize(keywordResult(text), text, projects, activities, "keyword"));
 }

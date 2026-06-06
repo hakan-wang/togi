@@ -1,61 +1,67 @@
 /* ============================================================
-   Togi — Today view pieces (variant B), wired for the real vertical slice.
-   • TodayCheckin — collapsed notification by default (mic OFF). A single tap
-     expands it AND starts the mic (the only moment it goes live). Live waveform,
-     pause/resume, Esc cancels, "type instead" fallback, Enter submits.
-   • InsightBanner — one slim live short-term pattern above the calendar.
+   Togi — Today view: the mic-on-tap check-in card + insight banner.
+   Collapsed notification by default (mic OFF). One tap expands AND starts the mic.
+   When the categorizer is unsure (confidence < 0.6), Togi asks ONE clarifying
+   question inline before saving. The categorized result shows on the Real block.
    ============================================================ */
 "use client";
 import * as React from "react";
 import { useEffect, useState } from "react";
-import { CATEGORIES, JUST_ENDED } from "../lib/data";
+import { DOMAINS, JUST_ENDED } from "../lib/data";
 import { BannerInsight } from "../lib/insights";
 import { useRecorder } from "../lib/useRecorder";
-import { IcChat, IcClose, IcMic, IcPause, IcPlay, IcSpark, IcArrow } from "./icons";
+import { IcArrow, IcChat, IcClose, IcMic, IcPause, IcPlay, IcSpark } from "./icons";
 import { Composer } from "./ds";
+
+export type CheckinResult = { status: "done" } | { status: "clarify"; question: string; draftText: string };
+export type CheckinInput = { blob?: Blob | null; text?: string; clarifyAnswer?: string; draftText?: string };
 
 function LiveWave({ n = 28, level = 0 }: { n?: number; level?: number }) {
   const bars = [];
-  for (let i = 0; i < n; i++) {
-    bars.push(<i key={i} style={{ animationDelay: (i % 7) * 0.09 + "s", animationDuration: 0.7 + (i % 5) * 0.12 + "s" }} />);
-  }
+  for (let i = 0; i < n; i++) bars.push(<i key={i} style={{ animationDelay: (i % 7) * 0.09 + "s", animationDuration: 0.7 + (i % 5) * 0.12 + "s" }} />);
   return <span className="live-wave" aria-hidden="true" style={{ transform: `scaleY(${0.6 + level * 0.9})` }}>{bars}</span>;
 }
 
-export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | null; text?: string }) => Promise<void> }) {
+export function TodayCheckin({ onSubmit }: { onSubmit: (input: CheckinInput) => Promise<CheckinResult> }) {
   const J = JUST_ENDED;
-  const C = CATEGORIES[J.cat];
+  const C = DOMAINS[J.domain];
   const rec = useRecorder();
-  const [mode, setMode] = useState<"collapsed" | "voice" | "type">("collapsed");
+  const [mode, setMode] = useState<"collapsed" | "voice" | "type" | "clarify">("collapsed");
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
+  const [clarify, setClarify] = useState<{ question: string; draftText: string } | null>(null);
+  const [answer, setAnswer] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  const collapse = () => { setMode("collapsed"); setBusy(false); setText(""); setErr(null); };
+  const collapse = () => { setMode("collapsed"); setBusy(false); setText(""); setAnswer(""); setClarify(null); setErr(null); };
 
-  // start voice: the ONLY place the mic opens
-  const startVoice = async () => {
-    setErr(null); setMode("voice");
-    try { await rec.start(); } catch { setMode("type"); /* fall back to typing if mic denied */ }
-  };
-
+  const startVoice = async () => { setErr(null); setMode("voice"); try { await rec.start(); } catch { setMode("type"); } };
   const cancelVoice = () => { rec.cancel(); collapse(); };
+
+  const handleResult = (res: CheckinResult) => {
+    if (res.status === "clarify") { setClarify({ question: res.question, draftText: res.draftText }); setMode("clarify"); setBusy(false); }
+    else collapse();
+  };
 
   const submitVoice = async () => {
     setBusy(true);
     const blob = await rec.stop();
-    try { await onSubmit({ blob }); collapse(); }
+    try { handleResult(await onSubmit({ blob })); }
     catch (e: any) { setErr(e?.message || "Something went wrong."); setBusy(false); }
   };
-
   const submitText = async () => {
     const t = text.trim(); if (!t) return;
     setBusy(true);
-    try { await onSubmit({ text: t }); collapse(); }
+    try { handleResult(await onSubmit({ text: t })); }
+    catch (e: any) { setErr(e?.message || "Something went wrong."); setBusy(false); }
+  };
+  const submitAnswer = async () => {
+    const a = answer.trim(); if (!a || !clarify) return;
+    setBusy(true);
+    try { handleResult(await onSubmit({ clarifyAnswer: a, draftText: clarify.draftText })); }
     catch (e: any) { setErr(e?.message || "Something went wrong."); setBusy(false); }
   };
 
-  // keyboard only while expanded: Esc cancels, Enter submits voice (not while typing)
   useEffect(() => {
     if (mode === "collapsed") return;
     const onKey = (e: KeyboardEvent) => {
@@ -70,7 +76,7 @@ export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | n
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- collapsed: calm notification pill (tap to start the check-in) ----
+  // ---- collapsed: calm notification pill ----
   if (mode === "collapsed") {
     return (
       <button className="checkin-pill" onClick={startVoice} title="Tap to check in (starts the mic)">
@@ -92,24 +98,31 @@ export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | n
         <div className="checkin-status">
           {busy
             ? <span className="checkin-live"><span className="checkin-live-dot" /> Sorting that…</span>
-            : mode === "type"
-              ? <span className="checkin-live paused"><IcChat size={12} /> Type instead</span>
-              : listening
-                ? <span className="checkin-live"><span className="checkin-live-dot" /> Listening</span>
-                : <span className="checkin-live paused"><IcPause size={12} /> Paused</span>}
+            : mode === "clarify"
+              ? <span className="checkin-live"><IcSpark size={12} /> One quick thing</span>
+              : mode === "type"
+                ? <span className="checkin-live paused"><IcChat size={12} /> Type instead</span>
+                : listening
+                  ? <span className="checkin-live"><span className="checkin-live-dot" /> Listening</span>
+                  : <span className="checkin-live paused"><IcPause size={12} /> Paused</span>}
           <span className="checkin-chip"><span className="cat-swatch" style={{ background: C.color }} />{C.label}</span>
         </div>
-        <div className="checkin-title"><strong>{J.block}</strong> just ended — tell me what really happened.</div>
-        <div className="checkin-sub num">
-          {J.window} · {busy ? "Togi is categorizing…" : mode === "type" ? "type your check-in, Enter to send" : listening ? "just talk, I’m listening" : "paused — resume when ready"}
-        </div>
-        {err && <div className="checkin-sub" style={{ color: "var(--alert)" }}>{err}</div>}
-        {mode === "voice" && !busy && <span className={"live-wave-wrap" + (rec.isPaused ? " is-paused" : "")}><LiveWave level={rec.level} /></span>}
-        {mode === "type" && !busy && (
-          <div style={{ marginTop: 8 }}>
-            <Composer value={text} onChange={setText} onSend={submitText} placeholder="e.g. I scrolled TikTok for about 40 minutes instead of editing" />
-          </div>
+
+        {mode === "clarify" && clarify ? (
+          <>
+            <div className="checkin-title">{clarify.question}</div>
+            <div className="checkin-sub num">Answer so Togi gets it right.</div>
+            {!busy && <div style={{ marginTop: 8 }}><Composer value={answer} onChange={setAnswer} onSend={submitAnswer} placeholder="say or type your answer…" /></div>}
+          </>
+        ) : (
+          <>
+            <div className="checkin-title"><strong>{J.block}</strong> just ended — tell me what really happened.</div>
+            <div className="checkin-sub num">{J.window} · {busy ? "Togi is categorizing…" : mode === "type" ? "type your check-in, Enter to send" : listening ? "just talk, I’m listening" : "paused — resume when ready"}</div>
+            {mode === "voice" && !busy && <span className={"live-wave-wrap" + (rec.isPaused ? " is-paused" : "")}><LiveWave level={rec.level} /></span>}
+            {mode === "type" && !busy && <div style={{ marginTop: 8 }}><Composer value={text} onChange={setText} onSend={submitText} placeholder="e.g. I scrolled TikTok for about 40 minutes instead of editing" /></div>}
+          </>
         )}
+        {err && <div className="checkin-sub" style={{ color: "var(--alert)" }}>{err}</div>}
       </div>
 
       <div className="checkin-side">
@@ -127,6 +140,9 @@ export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | n
           )}
           {mode === "type" && !busy && (
             <button className="checkin-ctrl checkin-done" onClick={submitText} title="Send (Enter)"><IcArrow size={13} /> Send <kbd>Enter</kbd></button>
+          )}
+          {mode === "clarify" && !busy && (
+            <button className="checkin-ctrl checkin-done" onClick={submitAnswer} title="Send (Enter)"><IcArrow size={13} /> Answer <kbd>Enter</kbd></button>
           )}
         </div>
       </div>

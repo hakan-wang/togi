@@ -1,13 +1,11 @@
 /* ============================================================
-   Togi — DayCalendar (ported). Plan / Real with a rack-focus toggle.
-   Real sits at the same Y as its Plan block, offset on X, faint Plan behind.
-   Tap empties / drag → self check-in. The Real layer is driven by a prop so
-   live check-ins appear immediately.
+   Togi — DayCalendar. Plan / Real with a rack-focus toggle.
+   Blocks render: title (headline) · project (chip) · note (subtitle), colored by domain.
    ============================================================ */
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { CATEGORIES, DAY_START, DAY_END, NOW, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt, hm, CategoryKey } from "../lib/data";
+import { DOMAINS, DAY_START, DAY_END, NOW, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
 import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus } from "./icons";
 
 const WEEK = [
@@ -22,8 +20,7 @@ function DaySelector({ onPlanDay }: any) {
       {WEEK.map((w: any) => (
         <button key={w.d} className={"day-cell" + (w.today ? " today" : "") + (w.future ? " future" : "")}
           onClick={() => w.future && onPlanDay(w)} title={w.future ? "Plan this day with Togi" : ""}>
-          <span className="day-cell-d">{w.d}</span>
-          <span className="day-cell-n num">{w.n}</span>
+          <span className="day-cell-d">{w.d}</span><span className="day-cell-n num">{w.n}</span>
           {w.future && <span className="day-cell-plan"><IcPlus size={11} /></span>}
         </button>
       ))}
@@ -31,8 +28,8 @@ function DaySelector({ onPlanDay }: any) {
   );
 }
 
-function BlockEl({ top, height, cat, title, sub, time, layer, tag, live, onClick }: any) {
-  const C = CATEGORIES[cat as CategoryKey];
+function BlockEl({ top, height, domain, title, project, note, time, layer, tag, live, onClick }: any) {
+  const C = DOMAINS[domain];
   const tiny = height < 40;
   return (
     <div className={"blk blk-" + layer + (tag ? " has-tag" : "") + (live ? " blk-live" : "")}
@@ -41,6 +38,7 @@ function BlockEl({ top, height, cat, title, sub, time, layer, tag, live, onClick
       <div className="blk-body">
         <div className="blk-row">
           <span className="blk-title">{title}</span>
+          {project && <span className="blk-proj">{project}</span>}
           {tag === "off" && <span className="blk-leak-tag">off-plan</span>}
           {tag === "match" && <span className="blk-check"><IcCheck size={11} /></span>}
           {tag === "unplanned" && <span className="blk-unplanned">unplanned</span>}
@@ -49,7 +47,7 @@ function BlockEl({ top, height, cat, title, sub, time, layer, tag, live, onClick
         {!tiny && (
           <div className="blk-meta">
             <span className="blk-time num">{time}</span>
-            {sub && <span className="blk-sub">{sub}</span>}
+            {note && <span className="blk-sub">{note}</span>}
           </div>
         )}
       </div>
@@ -65,7 +63,7 @@ function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
     <div className="mini">
       <div className="mini-list">
         {list.slice(0, 5).map((b: any) => {
-          const C = CATEGORIES[b.cat as CategoryKey];
+          const C = DOMAINS[b.domain];
           return (
             <button className="mini-row" key={b.id} onClick={() => onTalkBlock(b)}>
               <span className="mini-time num">{fmt(view === "plan" ? b.start : realStart(b))}</span>
@@ -78,7 +76,7 @@ function MinimizedDay({ view, real, onExpand, onTalkBlock }: any) {
       <div className="mini-up">
         <div className="mini-up-h">Coming up</div>
         {UPCOMING.map((u, i) => {
-          const C = CATEGORIES[u.cat];
+          const C = DOMAINS[u.domain];
           return (
             <div className="mini-up-row" key={i}>
               <span className="cat-swatch" style={{ background: C.color }} />
@@ -100,7 +98,6 @@ function MultiDay({ span }: { span: string }) {
   const yOf = (m: number) => (m - DAY_START) * ppm;
   const labels: number[] = [];
   for (let m = DAY_START; m <= DAY_END; m += 120) labels.push(m);
-  // deterministic, varied blocks per day so the week looks lived-in (today = the real plan)
   const dayBlocks = (idx: number, isToday: boolean) => (isToday ? PLAN : PLAN.filter((_, k) => (k + idx) % 3 !== 0));
   return (
     <div className="multi" style={{ height: H + 34 }}>
@@ -111,13 +108,11 @@ function MultiDay({ span }: { span: string }) {
         const isToday = !!w.today;
         return (
           <div className="multi-col" key={w.d}>
-            <div className={"multi-col-h" + (isToday ? " today" : "")}>
-              <span className="multi-col-d">{w.d}</span> <span className="multi-col-n num">{w.n}</span>
-            </div>
+            <div className={"multi-col-h" + (isToday ? " today" : "")}><span className="multi-col-d">{w.d}</span> <span className="multi-col-n num">{w.n}</span></div>
             <div className="multi-track" style={{ height: H }}>
               {labels.map((m) => <div key={m} className="multi-line" style={{ top: yOf(m) }} />)}
               {dayBlocks(i, isToday).map((b) => {
-                const C = CATEGORIES[b.cat];
+                const C = DOMAINS[b.domain];
                 return <div className="multi-blk" key={b.id} title={`${C.label} · ${b.title}`}
                   style={{ top: yOf(b.start), height: Math.max((b.end - b.start) * ppm, 11), background: C.color, opacity: isToday ? 1 : 0.8 }} />;
               })}
@@ -147,10 +142,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
 
   const gaps: { s: number; e: number }[] = [];
   const sorted = [...PLAN].sort((a, b) => a.start - b.start);
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const g0 = sorted[i].end, g1 = sorted[i + 1].start;
-    if (g1 - g0 >= 60) gaps.push({ s: g0, e: g1 });
-  }
+  for (let i = 0; i < sorted.length - 1; i++) { const g0 = sorted[i].end, g1 = sorted[i + 1].start; if (g1 - g0 >= 60) gaps.push({ s: g0, e: g1 }); }
 
   const segRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ left: 3, width: 0 });
@@ -181,40 +173,25 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
     let moved = false;
     const move = (ev: PointerEvent) => { moved = true; setDrag({ y0, y1: ev.clientY - r.top }); };
     const up = (ev: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      const y1 = ev.clientY - r.top;
-      setDrag(null);
-      if (moved && Math.abs(y1 - y0) > 10) {
-        const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1));
-        talkAt(ev.clientX, ev.clientY, `${fmt(a)}–${fmt(b)}`, () => onSelfCheckin(`${fmt(a)}–${fmt(b)}`));
-      } else {
-        const t = mOf(y0);
-        talkAt(ev.clientX, ev.clientY, `around ${fmt(t)}`, () => onSelfCheckin(`around ${fmt(t)}`));
-      }
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      const y1 = ev.clientY - r.top; setDrag(null);
+      if (moved && Math.abs(y1 - y0) > 10) { const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1)); talkAt(ev.clientX, ev.clientY, `${fmt(a)}–${fmt(b)}`, () => onSelfCheckin(`${fmt(a)}–${fmt(b)}`)); }
+      else { const t = mOf(y0); talkAt(ev.clientX, ev.clientY, `around ${fmt(t)}`, () => onSelfCheckin(`around ${fmt(t)}`)); }
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
 
   return (
     <div className={"cal" + (expanded ? " expanded" : " mini-mode")}>
       <div className="cal-head">
-        <div className="cal-head-left">
-          <div className="cal-eyebrow">Thursday · 5 June</div>
-          <DaySelector onPlanDay={onPlanDay} />
-        </div>
+        <div className="cal-head-left"><div className="cal-eyebrow">Thursday · 5 June</div><DaySelector onPlanDay={onPlanDay} /></div>
         <div className="cal-head-right">
           {expanded && (
             <div className="span-seg">
-              {["1d", "3d", "wk"].map((s) => (
-                <button key={s} className={span === s ? "on" : ""} onClick={() => setSpan(s)}>{s === "1d" ? "Day" : s === "3d" ? "3-day" : "Week"}</button>
-              ))}
+              {["1d", "3d", "wk"].map((s) => (<button key={s} className={span === s ? "on" : ""} onClick={() => setSpan(s)}>{s === "1d" ? "Day" : s === "3d" ? "3-day" : "Week"}</button>))}
             </div>
           )}
-          <button className="cal-min" title={expanded ? "Minimize" : "Expand"} onClick={() => setExpanded((v) => !v)}>
-            {expanded ? <IcMinimize size={15} /> : <IcExpand size={15} />}
-          </button>
+          <button className="cal-min" title={expanded ? "Minimize" : "Expand"} onClick={() => setExpanded((v) => !v)}>{expanded ? <IcMinimize size={15} /> : <IcExpand size={15} />}</button>
         </div>
       </div>
 
@@ -230,27 +207,21 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
         <div className="cal-track-wrap"><MultiDay span={span} /></div>
       ) : (
         <div className="cal-track-wrap">
-          <div className="cal-gutter" style={{ height: trackH }}>
-            {hours.map((m) => <div key={m} className="cal-hr num" style={{ top: yOf(m) }}>{fmt(m)}</div>)}
-          </div>
+          <div className="cal-gutter" style={{ height: trackH }}>{hours.map((m) => <div key={m} className="cal-hr num" style={{ top: yOf(m) }}>{fmt(m)}</div>)}</div>
           <div className="cal-track" ref={trackRef} style={{ height: trackH }} onPointerDown={onTrackDown}>
             {hours.map((m) => <div key={m} className="cal-line" style={{ top: yOf(m) }} />)}
 
             {view === "plan" && gaps.map((g, i) => (
-              <div key={i} className="cal-gap" style={{ top: yOf(g.s), height: yOf(g.e) - yOf(g.s) }}>
-                <span className="cal-gap-label"><IcPlus size={12} /> Untracked · tap to tell Togi</span>
-              </div>
+              <div key={i} className="cal-gap" style={{ top: yOf(g.s), height: yOf(g.e) - yOf(g.s) }}><span className="cal-gap-label"><IcPlus size={12} /> Untracked · tap to tell Togi</span></div>
             ))}
 
-            {now >= DAY_START && now <= DAY_END && (
-              <div className="cal-now" style={{ top: yOf(now) }}><span className="cal-now-dot" /><span className="cal-now-label num">now</span></div>
-            )}
+            {now >= DAY_START && now <= DAY_END && (<div className="cal-now" style={{ top: yOf(now) }}><span className="cal-now-dot" /><span className="cal-now-label num">now</span></div>)}
 
             <div className="cal-stage" data-view={view}>
               <div className="plan-layer">
                 {PLAN.map((p) => (
                   <BlockEl key={p.id} layer="plan" top={yOf(p.start)} height={yOf(p.end) - yOf(p.start)}
-                    cat={p.cat} title={p.title} sub={p.sub} time={`${fmt(p.start)}–${fmt(p.end)}`} onClick={(e: any) => onBlock(e, p, p.title)} />
+                    domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`} onClick={(e: any) => onBlock(e, p, p.title)} />
                 ))}
               </div>
               <div className="real-layer">
@@ -261,7 +232,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
                   const tag = r.off ? "unplanned" : r.match ? "match" : "off";
                   return (
                     <div key={r.id} className={"real-pos" + (p ? " aligned" : "")} style={{ position: "absolute", top: yOf(s), left: 0, right: 0, height: yOf(e2) - yOf(s) }}>
-                      <BlockEl layer="real" top={0} height={yOf(e2) - yOf(s)} cat={r.cat} title={r.title} sub={r.sub}
+                      <BlockEl layer="real" top={0} height={yOf(e2) - yOf(s)} domain={r.domain} title={r.title} project={r.project} note={r.note}
                         time={`${fmt(s)}–${fmt(e2)}`} tag={tag} live={r.live} onClick={(ev: any) => onBlock(ev, { ...r, start: s, end: e2 }, r.title)} />
                     </div>
                   );
@@ -269,11 +240,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, onPlanDay, onSelf
               </div>
             </div>
 
-            {drag && (
-              <div className="cal-select" style={{ top: Math.min(drag.y0, drag.y1), height: Math.abs(drag.y1 - drag.y0) }}>
-                <span className="num">{fmt(mOf(Math.min(drag.y0, drag.y1)))}–{fmt(mOf(Math.max(drag.y0, drag.y1)))}</span>
-              </div>
-            )}
+            {drag && (<div className="cal-select" style={{ top: Math.min(drag.y0, drag.y1), height: Math.abs(drag.y1 - drag.y0) }}><span className="num">{fmt(mOf(Math.min(drag.y0, drag.y1)))}–{fmt(mOf(Math.max(drag.y0, drag.y1)))}</span></div>)}
 
             {listen && (
               <div className="listen" style={{ left: Math.min(listen.x, (trackRef.current?.offsetWidth || 400) - 168), top: Math.max(listen.y - 58, 0) }}>
