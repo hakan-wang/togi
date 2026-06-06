@@ -22,6 +22,9 @@ export function makeDispatcher(deps: { agent: AgentLike; write: (line: string) =
 // Real wiring (not exercised by unit tests): build proxy + agent from env, pump stdin.
 export async function runStdio(): Promise<void> {
   const { createBogiAgent } = await import("./agent.js");
+  const { makeReadTools } = await import("./tools/readTools.js");
+  const { openReadOnly } = await import("./db.js");
+  const dbPath = process.env.BOGI_DB_PATH!;
   const baseURL = process.env.BOGI_BACKEND_URL!;
   const token = process.env.BOGI_AUTH_TOKEN ?? "";
   const post = async (body: unknown) => {
@@ -32,7 +35,8 @@ export async function runStdio(): Promise<void> {
     });
     return (await r.json()) as any;
   };
-  const agent = createBogiAgent({ tools: [], post });
+  const tools = makeReadTools(() => openReadOnly(dbPath));
+  const agent = createBogiAgent({ tools, post });
   const dispatch = makeDispatcher({ agent, write: (l) => process.stdout.write(l) });
   const decoder = new LineDecoder((m) => { void dispatch(m); });
   process.stdin.setEncoding("utf8");
