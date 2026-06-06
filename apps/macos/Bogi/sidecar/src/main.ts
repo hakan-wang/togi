@@ -1,5 +1,6 @@
 import { LineDecoder, encodeMessage, type Inbound } from "./rpc.js";
 import { type StreamFn, type StreamFrame } from "./proxyChatModel.js";
+import { logLine } from "./log.js";
 
 interface AgentLike {
   invoke(input: unknown, config?: unknown): Promise<{ messages: { content: unknown }[] }>;
@@ -18,6 +19,7 @@ export function makeDispatcher(deps: {
 }) {
   return async function dispatch(msg: Inbound): Promise<void> {
     if (msg.kind === "chat" || msg.kind === "plan" || msg.kind === "judge") {
+      logLine("dispatch.start", { kind: msg.kind, id: msg.id, threadId: msg.threadId, hasToken: !!msg.token, text: String(msg.text).slice(0, 120) });
       try {
         deps.setToken?.(msg.token);
         if (deps.agent.__bogiModel) deps.agent.__bogiModel.activeRequestId = msg.id;
@@ -32,9 +34,12 @@ export function makeDispatcher(deps: {
           { configurable: { thread_id: msg.threadId }, recursionLimit: 12 }
         );
         const text = String(res.messages.at(-1)?.content ?? "");
+        logLine("dispatch.ok", { id: msg.id, replyLen: text.length });
         deps.write(encodeMessage({ kind: "result", id: msg.id, ok: true, text }));
       } catch (err) {
-        deps.write(encodeMessage({ kind: "error", id: msg.id, message: String((err as Error)?.message ?? err) }));
+        const e = err as Error;
+        logLine("dispatch.error", { id: msg.id, message: String(e?.message ?? err), name: e?.name, stack: e?.stack });
+        deps.write(encodeMessage({ kind: "error", id: msg.id, message: String(e?.message ?? err) }));
       } finally {
         if (deps.agent.__bogiModel) deps.agent.__bogiModel.activeRequestId = null;
       }
@@ -82,6 +87,7 @@ export function makeWsStream(wsUrl: string, getToken: () => string): StreamFn {
     }));
 
     let sawTerminal = false;
+    const frameCounts: Record<string, number> = {};
     try {
       while (true) {
         while (queue.length === 0 && !closed) {
@@ -90,12 +96,15 @@ export function makeWsStream(wsUrl: string, getToken: () => string): StreamFn {
         if (failure) throw failure;
         if (queue.length === 0 && closed) break;
         const frame = queue.shift()!;
+        frameCounts[frame.type] = (frameCounts[frame.type] ?? 0) + 1;
+        if (frame.type === "error") logLine("ws.error_frame", { message: (frame as { message?: string }).message });
         yield frame;
         if (frame.type === "stop" || frame.type === "done" || frame.type === "error") {
           sawTerminal = true;
           break;
         }
       }
+      logLine("ws.stream_end", { sawTerminal, frameCounts });
       // A socket that closes before a terminal stop/done/error frame yielded a truncated
       // turn. Surface it as an error so the caller does not treat a partial reply as success.
       if (!sawTerminal) throw new Error("websocket closed before completion");

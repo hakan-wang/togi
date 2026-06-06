@@ -48,6 +48,26 @@ test("structured content blocks (tool_result) pass through", () => {
   ]);
 });
 
+test("consecutive tool_result user messages are merged into one Converse turn", () => {
+  const input = buildConverseInput({
+    modelId: "m",
+    messages: [
+      { role: "user", content: "go" },
+      { role: "assistant", content: [
+        { type: "tool_use", id: "a", name: "t", input: {} },
+        { type: "tool_use", id: "b", name: "t", input: {} },
+      ] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "ra" }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "b", content: "rb" }] },
+    ],
+    maxTokens: 100,
+  });
+  assert.deepEqual(input.messages.map((m) => m.role), ["user", "assistant", "user"]);
+  assert.equal(input.messages[2].content.length, 2);
+  assert.equal(input.messages[2].content[0].toolResult.toolUseId, "a");
+  assert.equal(input.messages[2].content[1].toolResult.toolUseId, "b");
+});
+
 test("parseConverseOutput surfaces text, tool_use, stopReason, usage", () => {
   const res = {
     stopReason: "tool_use",

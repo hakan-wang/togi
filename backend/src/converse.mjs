@@ -19,11 +19,25 @@ function toContentBlocks(content) {
   });
 }
 
+// Bedrock Converse requires strictly alternating user/assistant turns, and ALL toolResult
+// blocks answering one assistant turn's tool_use ids must live in a SINGLE following user
+// message. LangChain emits one ToolMessage per tool call (hence several consecutive user
+// messages), so we merge adjacent same-role messages by concatenating their content blocks.
+function coalesceByRole(mapped) {
+  const out = [];
+  for (const m of mapped) {
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) last.content = last.content.concat(m.content);
+    else out.push({ role: m.role, content: [...m.content] });
+  }
+  return out;
+}
+
 export function buildConverseInput({ modelId, system, messages, tools, maxTokens = 1024, temperature = 0 }) {
   const input = {
     modelId,
     system: system ? [{ text: system }] : undefined,
-    messages: (messages || []).map((m) => ({ role: m.role, content: toContentBlocks(m.content) })),
+    messages: coalesceByRole((messages || []).map((m) => ({ role: m.role, content: toContentBlocks(m.content) }))),
     inferenceConfig: { maxTokens, temperature },
   };
   if (tools && tools.length) {

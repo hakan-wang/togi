@@ -3,6 +3,7 @@ import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { ChatResult } from "@langchain/core/outputs";
 import { type StructuredToolInterface } from "@langchain/core/tools";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { logLine } from "./log.js";
 
 type InferBlock =
   | { type: "text"; text: string }
@@ -101,12 +102,19 @@ export class BogiProxyChatModel extends BaseChatModel {
       tools: this.boundTools?.length ? this.boundTools : undefined,
       maxTokens: this.maxTokens,
     };
+    logLine("model.generate", {
+      mode: this.streamFn ? "stream" : "post",
+      msgRoles: body.messages.map((m) => m.role),
+      msgBlockTypes: body.messages.map((m) => typeof m.content === "string" ? "text" : (m.content as InferBlock[]).map((b) => b.type)),
+      toolNames: body.tools?.map((t) => t.name),
+    });
     if (this.streamFn) {
       try {
         return await this.generateStreaming(body);
       } catch (err) {
         // Streaming failed (e.g. WS auth/connect error). If a non-streaming HTTP transport is
         // available, degrade to it so the agent still answers (just without token-by-token).
+        logLine("model.stream.failed", { message: String((err as Error)?.message ?? err), willFallback: !!this.post });
         if (!this.post) throw err;
       }
     }
@@ -147,6 +155,10 @@ export class BogiProxyChatModel extends BaseChatModel {
       }
     }
     flushTool();
+    logLine("model.stream.done", {
+      textLen: text.length,
+      toolCalls: toolCalls.map((t) => ({ name: t.name, args: t.args })),
+    });
     const message = new AIMessage({ content: text, tool_calls: toolCalls });
     return { generations: [{ text, message }] };
   }
