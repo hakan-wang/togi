@@ -60,7 +60,9 @@ export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; vi
     try {
       const { data: { user } } = await sb.auth.getUser();
       if (user) {
-        const { error } = await sb.from("real_entries").insert({ ...row, user_id: user.id });
+        // Let Postgres generate the uuid id (our local "live-…" id isn't a uuid).
+        const { id, ...insertable } = row;
+        const { error } = await sb.from("real_entries").insert({ ...insertable, user_id: user.id });
         if (!error) return { ok: true, via: "supabase" };
         console.warn("supabase insert failed, kept local:", error.message);
       }
