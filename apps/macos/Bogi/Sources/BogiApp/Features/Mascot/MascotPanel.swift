@@ -24,7 +24,9 @@ final class MascotPanel: NSPanel {
     init(viewModel: MascotViewModel? = nil) {
         self.viewModel = viewModel ?? MascotViewModel()
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 172, height: 184),
+            // Wide/tall enough that a multi-line nudge bubble (maxWidth 200) wraps and the
+            // mascot's mood glow sits within the transparent panel without clipping.
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 210),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -33,8 +35,10 @@ final class MascotPanel: NSPanel {
         level = .floating
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
-        isMovableByWindowBackground = true
+        hasShadow = false                   // no boxy window-shadow ring around the mascot
+        // The mascot view drives repositioning itself (so it can tell a drag from a click);
+        // leaving window-background move on would fight that and double-move the panel.
+        isMovableByWindowBackground = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // Route the view's tap through this panel's `onActivate` so the owner can swap
@@ -51,7 +55,7 @@ final class MascotPanel: NSPanel {
         // keep the position the user last dragged the mascot to.
         if !hasSetInitialPosition, let screen = NSScreen.main {
             let frame = screen.visibleFrame
-            setFrameOrigin(NSPoint(x: frame.maxX - 196, y: frame.minY + 72))
+            setFrameOrigin(NSPoint(x: frame.maxX - 264, y: frame.minY + 72))
             hasSetInitialPosition = true
         }
         orderFrontRegardless()

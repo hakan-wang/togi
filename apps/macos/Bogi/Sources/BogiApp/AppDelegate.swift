@@ -129,13 +129,13 @@ final class AppState: ObservableObject {
     func startSidecar() async {
         let token = await auth.currentAccessToken() ?? ""
         sidecarTransport.environment["BOGI_AUTH_TOKEN"] = token
-        // WebSocket streaming endpoint (Bedrock ConverseStream). The sidecar streams model
-        // turns over this and emits token-by-token frames; on any WS failure (e.g. an expired
-        // token) it transparently degrades to the HTTP /v1/infer path. An env override wins so
-        // tests/dev can point elsewhere.
-        let wsURL = ProcessInfo.processInfo.environment["BOGI_WS_URL"]
-            ?? "wss://spz67o2b6l.execute-api.eu-west-1.amazonaws.com/prod"
-        sidecarTransport.environment["BOGI_WS_URL"] = wsURL
+        // Streaming is DISABLED for this release: the WS inference endpoint currently 401s, so
+        // we run HTTP-only (the sidecar streams only when BOGI_WS_URL is non-empty; otherwise it
+        // uses the non-streaming HTTP /v1/infer path). A non-empty BOGI_WS_URL env override still
+        // lets dev/test opt back into streaming once the endpoint auth is fixed.
+        if let wsURL = ProcessInfo.processInfo.environment["BOGI_WS_URL"], !wsURL.isEmpty {
+            sidecarTransport.environment["BOGI_WS_URL"] = wsURL
+        }
         do { try sidecar.start() } catch {
             NSLog("Bogi: failed to start sidecar: \(error)")
         }

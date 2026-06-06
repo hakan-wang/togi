@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import MarkdownUI
 
 /// Blunt-coach chat surface, laid out as a command bar: the input sits on top, and the
 /// conversation unfolds beneath it so the card can grow downward from almost nothing.
@@ -24,8 +25,9 @@ struct CoachView: View {
     @State private var sending: Bool = false
     @State private var errorText: String?
     @State private var suggestions: [String] = []
-    /// Latches true once the transcript would overflow the cap, switching to a scroll view.
-    @State private var overflowing = false
+    /// Natural (unclipped) height of the transcript content, measured off-screen so the
+    /// scroll view can be capped reliably even with markdown tables/lists in the bubbles.
+    @State private var contentHeight: CGFloat = 0
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -52,7 +54,6 @@ struct CoachView: View {
             input = ""
             errorText = nil
             sending = false
-            overflowing = false
             messages = seedMessages
             suggestions = suggest()
             DispatchQueue.main.async { inputFocused = true }
@@ -135,35 +136,51 @@ struct CoachView: View {
 
     // MARK: - Transcript
 
-    /// While the conversation fits, the messages render directly and the card grows to them
-    /// (measured naturally — no ScrollView in the loop, so the height is reliable). Once they
-    /// would overflow the cap we latch into a fixed-height scroll view that pins to the
-    /// newest message, so the card never runs off the screen.
+    /// The transcript always lives inside a `ScrollView`, but the scroll view is sized to the
+    /// content's natural height capped at `transcriptMaxHeight`. While the conversation is
+    /// short the card grows to fit it exactly (no empty scroll gutter); once the content
+    /// exceeds the cap the scroll view stops growing and the user can scroll up to read long
+    /// tables, while new messages auto-scroll the newest content into view. The content height
+    /// is measured off-screen via a preference so the cap is reliable even with markdown
+    /// (tables/lists) inside the bubbles.
     private var transcript: some View {
-        Group {
-            if overflowing {
-                ScrollViewReader { proxy in
-                    ScrollView { messagesStack }
-                        .frame(height: transcriptMaxHeight)
-                        .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
-                        .onChange(of: messages.count) { _, _ in
-                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                        }
-                        .onChange(of: sending) { _, _ in
-                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                        }
-                }
-            } else {
+        ScrollViewReader { proxy in
+            ScrollView {
                 messagesStack
+                    // Measure the content's natural height. The ScrollView always proposes
+                    // an unbounded height to its content, so this reads the true unclipped
+                    // height regardless of the (possibly capped) frame applied below.
                     .background(
                         GeometryReader { geo in
-                            Color.clear.preference(key: TranscriptHeightKey.self, value: geo.size.height)
+                            Color.clear.preference(
+                                key: TranscriptHeightKey.self,
+                                value: geo.size.height
+                            )
                         }
                     )
             }
+            // Give the ScrollView a definite height equal to its content, capped at the
+            // ceiling. Below the cap the card grows to fit exactly (no empty gutter); at the
+            // cap the scroll view stops growing and the content genuinely scrolls. (Using
+            // `fixedSize` here would size the scroll view to its content and defeat scrolling.)
+            .frame(height: min(max(contentHeight, 1), transcriptMaxHeight))
+            .scrollBounceBehavior(.basedOnSize)
+            .onPreferenceChange(TranscriptHeightKey.self) { contentHeight = $0 }
+            .onAppear { scrollToBottom(proxy, animated: false) }
+            .onChange(of: messages.count) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: sending) { _, _ in scrollToBottom(proxy) }
         }
-        .onPreferenceChange(TranscriptHeightKey.self) { height in
-            if height > transcriptMaxHeight + 1 { overflowing = true }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        // Defer to the next runloop tick so the layout (and any freshly streamed text) has
+        // settled before we pin to the bottom anchor.
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            } else {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
         }
     }
 
@@ -239,6 +256,17 @@ struct CoachView: View {
     }
 }
 
+// MARK: - Transcript height measurement
+
+/// Carries the transcript content's natural (unclipped) height up to `CoachView`, so the
+/// scroll view can be capped at `transcriptMaxHeight` while still hugging short chats.
+private struct TranscriptHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 // MARK: - Message bubble
 
 private struct MessageBubble: View {
@@ -251,8 +279,11 @@ private struct MessageBubble: View {
         HStack {
             if isUser { Spacer(minLength: 32) }
 
-            Text(text)
-                .font(.callout)
+            content
+                // Take the full multi-line height instead of being compressed to one
+                // truncated line when the host panel hasn't grown yet. Without this the
+                // bubble shows only the first line + "…" (replies run to hundreds of chars).
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(bubble, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -260,11 +291,28 @@ private struct MessageBubble: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(Color.white.opacity(isUser ? 0 : 0.45), lineWidth: 1)
                 )
-                .foregroundStyle(isUser ? Color.white : BogiColor.ink)
                 .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
-                .multilineTextAlignment(.leading)
 
             if !isUser { Spacer(minLength: 32) }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isUser {
+            // User input is short, plain text — no markdown parsing needed.
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(Color.white)
+                .multilineTextAlignment(.leading)
+        } else {
+            // Coach replies are GitHub-Flavored Markdown (bold, lists, tables). MarkdownUI
+            // renders all of it; SwiftUI's Text(markdown:) can't do tables/lists.
+            Markdown(text)
+                .markdownTextStyle { ForegroundColor(BogiColor.ink) }
+                .markdownTheme(.bogi)
+                .tint(BogiColor.primary)
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -275,10 +323,49 @@ private struct MessageBubble: View {
     }
 }
 
-/// Reports the natural height of the transcript content so the card can size to it.
-private struct TranscriptHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+// MARK: - Markdown theme
+
+private extension Theme {
+    /// Coach-bubble markdown styling: callout-sized ink text on the light bubble, with
+    /// compact spacing so multi-paragraph replies and tables sit tight inside the bubble.
+    static let bogi = Theme()
+        .text {
+            ForegroundColor(BogiColor.ink)
+            FontSize(NSFont.preferredFont(forTextStyle: .callout).pointSize)
+        }
+        .link {
+            ForegroundColor(BogiColor.primary)
+        }
+        .strong {
+            FontWeight(.semibold)
+        }
+        .code {
+            FontFamilyVariant(.monospaced)
+            FontSize(.em(0.92))
+            BackgroundColor(BogiColor.ink.opacity(0.06))
+        }
+        .paragraph { configuration in
+            configuration.label
+                .relativeLineSpacing(.em(0.12))
+                .markdownMargin(top: 0, bottom: 8)
+        }
+        .listItem { configuration in
+            configuration.label
+                .markdownMargin(top: 2, bottom: 2)
+        }
+        .table { configuration in
+            configuration.label
+                .markdownTableBorderStyle(.init(color: BogiColor.ink.opacity(0.18)))
+                .markdownMargin(top: 4, bottom: 8)
+        }
+        .tableCell { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    if configuration.row == 0 { FontWeight(.semibold) }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+        }
 }
 
 #if DEBUG
