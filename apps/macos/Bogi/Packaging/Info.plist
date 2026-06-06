@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Info.plist for the assembled Bogi.app bundle (SwiftPM executable is wrapped into an
+     .app by Packaging/build-app.sh). Togi is a menu-bar app (LSUIElement) and is NOT
+     sandboxed — reading other apps' accessibility tree is incompatible with App Sandbox.
+     Distribution: Developer ID + hardened runtime + notarization (outside the App Store). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>            <string>Togi</string>
+    <key>CFBundleDisplayName</key>     <string>Togi</string>
+    <key>CFBundleIdentifier</key>      <string>sh.bogi.app</string>
+    <key>CFBundleExecutable</key>      <string>Bogi</string>
+    <key>CFBundlePackageType</key>     <string>APPL</string>
+    <key>CFBundleShortVersionString</key> <string>0.1.0</string>
+    <key>CFBundleVersion</key>         <string>1</string>
+    <key>LSMinimumSystemVersion</key>  <string>14.0</string>
+
+    <!-- Menu-bar app: no Dock icon, no default window. -->
+    <key>LSUIElement</key>             <true/>
+
+    <!-- Permission prompts. -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Togi reads your calendar to know what you planned, so it can compare plan vs reality.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Togi uses the microphone for "Hey Togi" voice planning and commands.</string>
+    <!-- Accessibility is requested at runtime via the system Accessibility list, not a usage string. -->
+
+    <!-- Google Calendar OAuth uses the 127.0.0.1 loopback redirect (Desktop client); no custom
+         URL scheme is needed, so there is no CFBundleURLTypes entry. -->
+
+    <!-- Sparkle auto-update (fill in before release). -->
+    <key>SUFeedURL</key>     <string>https://updates.bogi.sh/appcast.xml</string>
+    <key>SUPublicEDKey</key> <string>REPLACE_WITH_SPARKLE_ED25519_PUBLIC_KEY</string>
+    <key>SUEnableAutomaticChecks</key> <true/>
+</dict>
+</plist>

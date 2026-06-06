@@ -1,0 +1,93 @@
+import Foundation
+import SwiftUI
+
+/// The mascot's visible mood. Drives color/expression in `MascotView`.
+enum MascotMood {
+    case idle      // neutral resting state, no signal
+    case onTask    // user is focused — happy
+    case offTask   // user has drifted — concerned
+    case speaking  // actively delivering a nudge
+}
+
+/// Cosmetic mapping from `vitality` (0…100) to how the mascot body reads. Pure function,
+/// no state. Mirrors the web vitality demo: full of colour and lift when thriving, then
+/// desaturated, grey, slumped and sluggish when neglected. Never "dead" — the floor still
+/// gently bobs, and it always recovers.
+struct VitalityLook {
+    let saturation: Double
+    let grayscale: Double
+    let scale: CGFloat
+    let droopY: CGFloat        // sinks down when low, lifts a touch when high
+    let bobDistance: CGFloat
+    let bobDuration: Double
+
+    init(_ vitality: Double) {
+        let v = Swift.max(0, Swift.min(100, vitality))
+        let t = v / 100
+        saturation  = 0.3 + 0.9 * t
+        grayscale   = Swift.max(0, (36 - v) / 36 * 0.45)
+        scale       = CGFloat(0.95 + 0.10 * t)
+        droopY      = CGFloat(9 - 12 * t)
+        bobDistance = CGFloat(4 + 6 * t)
+        bobDuration = 4.6 - 2.2 * t
+    }
+}
+
+/// Thin observable state for the mascot UI. Holds no decision logic — escalation,
+/// snooze and DND all live in `NudgePresenter`. The view model is just the bridge
+/// that SwiftUI observes; the AppDelegate (or owner) pushes values into it.
+@MainActor
+final class MascotViewModel: ObservableObject {
+    @Published var mood: MascotMood
+    @Published var bubbleText: String?
+    /// 0 = calm. Higher means a louder/bigger nudge (see `NudgePresenter`).
+    @Published var escalationLevel: Int
+    /// Togi's wellbeing, 0 (neglected) … 100 (thriving). Climbs when the user follows
+    /// through (on-task), drifts down when off-task or idle. Drives the body's look via
+    /// `VitalityLook`: alive and saturated up high, drained and grey down low.
+    @Published var vitality: Double
+
+    init(mood: MascotMood = .idle,
+         bubbleText: String? = nil,
+         escalationLevel: Int = 0,
+         vitality: Double = 70) {
+        self.mood = mood
+        self.bubbleText = bubbleText
+        self.escalationLevel = escalationLevel
+        self.vitality = vitality
+    }
+
+    /// Apply a presenter decision to the visible state.
+    func apply(_ decision: NudgeDecision) {
+        if decision.show {
+            mood = .speaking
+            bubbleText = decision.text
+            escalationLevel = decision.escalationLevel
+        }
+        // If a decision says don't show (snoozed/DND), leave the current bubble
+        // untouched — the owner decides whether to clear it via `clearBubble()`.
+    }
+
+    /// Drop the speech bubble and fall back to a resting mood.
+    func clearBubble(fallback: MascotMood = .idle) {
+        bubbleText = nil
+        escalationLevel = 0
+        mood = fallback
+    }
+
+    /// Nudge wellbeing from a single on-task/off-task read. Gentle on purpose: it takes
+    /// sustained follow-through to thrive and a rough patch to wilt, and it always
+    /// recovers. Called each judge tick.
+    func nudgeVitality(onTask: Bool) {
+        vitality = (vitality + (onTask ? 1.6 : -2.2)).clampedToVitality()
+    }
+
+    /// Set wellbeing directly (demo control now; real follow-through data later).
+    func setVitality(_ value: Double) {
+        vitality = value.clampedToVitality()
+    }
+}
+
+private extension Double {
+    func clampedToVitality() -> Double { Swift.max(0, Swift.min(100, self)) }
+}
