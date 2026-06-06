@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "heytogi",
+  "workers_dev": true,
   "main": "dist/server/server.js",
   "compatibility_date": "2026-06-05",
   "compatibility_flags": ["nodejs_compat"],
@@ -10,5 +11,8 @@
   },
   "observability": {
     "enabled": true
-  }
+  },
+  "routes": [
+    { "pattern": "heytogi.com/*", "zone_name": "heytogi.com" }
+  ]
 }
