@@ -37,6 +37,7 @@ final class AppState: ObservableObject {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let appState: AppState
     private var mascot: MascotPanel?

@@ -1,10 +1,24 @@
 import AppKit
 import SwiftUI
 
-/// Placeholder floating mascot — a borderless, always-on-top, non-activating panel.
-/// Phase 6 replaces the art + adds mood states, nudges, escalation, snooze/DND.
+/// Floating mascot — a borderless, always-on-top, non-activating panel that hosts
+/// `MascotView`. It owns a `MascotViewModel` (the observable state SwiftUI renders)
+/// and forwards clicks via `onActivate`. Mood/nudge logic lives elsewhere
+/// (`NudgePresenter` + the AppDelegate); this panel is just the window shell.
+@MainActor
 final class MascotPanel: NSPanel {
-    init() {
+    /// Observable state driving the mascot's appearance. Push updates here (or call
+    /// `update(mood:)`) to change what the fish shows.
+    let viewModel: MascotViewModel
+
+    /// Fired when the user clicks the mascot ("Hey Bogi" → open coach chat). The
+    /// owner installs this; the panel never opens chat itself.
+    var onActivate: (() -> Void)? {
+        didSet { /* captured by reference in the hosted view's closure */ }
+    }
+
+    init(viewModel: MascotViewModel? = nil) {
+        self.viewModel = viewModel ?? MascotViewModel()
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 96, height: 96),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -18,7 +32,13 @@ final class MascotPanel: NSPanel {
         hasShadow = true
         isMovableByWindowBackground = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        contentView = NSHostingView(rootView: MascotPlaceholderView())
+
+        // Route the view's tap through this panel's `onActivate` so the owner can swap
+        // the closure at any time without rebuilding the hosting view.
+        let root = MascotView(viewModel: self.viewModel, onActivate: { [weak self] in
+            self?.onActivate?()
+        })
+        contentView = NSHostingView(rootView: root)
     }
 
     func show() {
@@ -29,17 +49,19 @@ final class MascotPanel: NSPanel {
         }
         orderFrontRegardless()
     }
-}
 
-private struct MascotPlaceholderView: View {
-    var body: some View {
-        // Placeholder fish — real asset added later.
-        Image(systemName: "fish.fill")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 56, height: 56)
-            .foregroundStyle(.orange)
-            .padding(16)
-            .background(.thinMaterial, in: Circle())
+    /// Convenience for the common case of just changing mood.
+    func update(mood: MascotMood) {
+        viewModel.mood = mood
+    }
+
+    /// Apply a presenter decision (bubble text + escalation + speaking mood).
+    func apply(_ decision: NudgeDecision) {
+        viewModel.apply(decision)
+    }
+
+    /// Dismiss the current bubble and settle back to a resting mood.
+    func clearBubble(fallback: MascotMood = .idle) {
+        viewModel.clearBubble(fallback: fallback)
     }
 }
