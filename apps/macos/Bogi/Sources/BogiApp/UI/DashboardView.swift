@@ -7,7 +7,7 @@ struct DashboardView: View {
     /// Supplies the insight for the selected period.
     let insight: (DashboardPeriod) -> PeriodInsight
     /// Forwarded to the embedded `CoachView`.
-    let ask: (String) async throws -> String
+    let ask: (_ question: String, _ onToken: @escaping (String) -> Void) async throws -> String
 
     @State private var period: DashboardPeriod = .day
 
@@ -73,7 +73,7 @@ struct DashboardView: View {
                 ]
             )
         },
-        ask: { _ in
+        ask: { _, _ in
             try? await Task.sleep(nanoseconds: 500_000_000)
             return "You're at 62% on task. The leak is email — 22% of your time, almost none of it on plan."
         }

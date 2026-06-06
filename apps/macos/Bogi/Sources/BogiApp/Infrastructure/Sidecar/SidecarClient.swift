@@ -5,6 +5,8 @@ import Foundation
 final class SidecarClient {
     private let transport: SidecarTransport
     private var pending: [String: CheckedContinuation<String, Error>] = [:]
+    /// Per-request streaming-token callbacks, keyed by request id. Cleared on resolve.
+    private var tokenHandlers: [String: (String) -> Void] = [:]
     private var counter = 0
     private let lock = NSLock()
     private let restartDelay: TimeInterval
@@ -29,7 +31,13 @@ final class SidecarClient {
     }
 
     func chat(_ text: String, threadId: String) async throws -> String {
-        try await request(kind: "chat", threadId: threadId, text: text)
+        try await chat(text, threadId: threadId, onToken: nil)
+    }
+
+    /// Streaming chat: `onToken` is invoked for each `token` frame as it arrives, and the
+    /// returned value is the final accumulated reply text.
+    func chat(_ text: String, threadId: String, onToken: ((String) -> Void)?) async throws -> String {
+        try await request(kind: "chat", threadId: threadId, text: text, onToken: onToken)
     }
 
     func plan(_ text: String, threadId: String) async throws -> String {
@@ -40,13 +48,17 @@ final class SidecarClient {
         try await request(kind: "judge", threadId: threadId, text: text)
     }
 
-    private func request(kind: String, threadId: String, text: String) async throws -> String {
+    private func request(kind: String, threadId: String, text: String,
+                         onToken: ((String) -> Void)? = nil) async throws -> String {
         let id = nextId()
         let payload: [String: Any] = ["kind": kind, "id": id, "threadId": threadId, "text": text]
         let data = try JSONSerialization.data(withJSONObject: payload)
         let line = String(data: data, encoding: .utf8)! + "\n"
         return try await withCheckedThrowingContinuation { cont in
-            lock.lock(); pending[id] = cont; lock.unlock()
+            lock.lock()
+            pending[id] = cont
+            if let onToken { tokenHandlers[id] = onToken }
+            lock.unlock()
             transport.send(line)
         }
     }
@@ -58,6 +70,10 @@ final class SidecarClient {
         // A healthy sidecar that produces valid lines clears the restart backoff.
         lock.lock(); restartAttempts = 0; lock.unlock()
         switch kind {
+        case "token":
+            guard let id = obj["id"] as? String, let text = obj["text"] as? String else { return }
+            lock.lock(); let handler = tokenHandlers[id]; lock.unlock()
+            handler?(text)
         case "result":
             guard let id = obj["id"] as? String else { return }
             resolve(id, .success((obj["text"] as? String) ?? ""))
@@ -102,7 +118,10 @@ final class SidecarClient {
     }
 
     private func resolve(_ id: String, _ result: Result<String, Error>) {
-        lock.lock(); let cont = pending.removeValue(forKey: id); lock.unlock()
+        lock.lock()
+        let cont = pending.removeValue(forKey: id)
+        tokenHandlers.removeValue(forKey: id)
+        lock.unlock()
         switch result {
         case .success(let s): cont?.resume(returning: s)
         case .failure(let e): cont?.resume(throwing: e)

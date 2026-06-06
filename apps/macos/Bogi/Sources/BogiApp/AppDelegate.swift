@@ -248,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = CompanionPanel {
             CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
-                ask: { question in try await state.coach.ask(question) },
+                ask: { question, onToken in try await state.coach.ask(question, onToken: onToken) },
                 onClose: { [weak self] in self?.companion?.orderOut(nil) }
             )
             .environmentObject(state)

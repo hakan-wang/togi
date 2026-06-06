@@ -7,7 +7,7 @@ struct CompanionView: View {
     enum Page { case chat, dashboard, settings }
 
     let insight: (DashboardPeriod) -> PeriodInsight
-    let ask: (String) async throws -> String
+    let ask: (_ question: String, _ onToken: @escaping (String) -> Void) async throws -> String
     var onClose: () -> Void = {}
 
     @State private var page: Page = .chat
@@ -123,7 +123,7 @@ struct CompanionView: View {
                 blocks: []
             )
         },
-        ask: { _ in try await Task.sleep(nanoseconds: 300_000_000); return "you spent most of the hour in the editor. good." }
+        ask: { _, _ in try await Task.sleep(nanoseconds: 300_000_000); return "you spent most of the hour in the editor. good." }
     )
     .frame(width: 420, height: 520)
     .padding(40)

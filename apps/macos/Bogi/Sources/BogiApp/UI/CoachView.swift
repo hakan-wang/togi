@@ -3,8 +3,9 @@ import SwiftUI
 /// Coach chat surface. Rendering-only: the actual ask goes through the injected
 /// `ask` closure so this view has no knowledge of the LLM/service layer.
 struct CoachView: View {
-    /// Sends the user's message and returns the coach's reply. Injected by the host.
-    let ask: (String) async throws -> String
+    /// Sends the user's message and returns the coach's reply. The `onToken` callback fires
+    /// for each streamed token so the reply can render incrementally. Injected by the host.
+    let ask: (_ question: String, _ onToken: @escaping (String) -> Void) async throws -> String
 
     @State private var messages: [(role: String, text: String)] = []
     @State private var input: String = ""
@@ -100,9 +101,27 @@ struct CoachView: View {
         sending = true
 
         Task {
+            // Reserve a coach bubble that fills in as tokens stream.
+            let replyIndex = messages.count
+            var streamed = false
             do {
-                let reply = try await ask(text)
-                messages.append((role: "coach", text: reply))
+                let reply = try await ask(text) { token in
+                    Task { @MainActor in
+                        if !streamed {
+                            streamed = true
+                            sending = false
+                            messages.append((role: "coach", text: token))
+                        } else if replyIndex < messages.count {
+                            messages[replyIndex].text += token
+                        }
+                    }
+                }
+                if streamed {
+                    if replyIndex < messages.count { messages[replyIndex].text = reply }
+                } else {
+                    // Non-streaming backend: just show the final reply.
+                    messages.append((role: "coach", text: reply))
+                }
             } catch {
                 errorText = "Bogi couldn't answer: \(error.localizedDescription)"
             }
@@ -143,7 +162,7 @@ private struct MessageBubble: View {
 
 #if DEBUG
 #Preview("Coach chat") {
-    CoachView(ask: { question in
+    CoachView(ask: { question, _ in
         try? await Task.sleep(nanoseconds: 600_000_000)
         return "You asked “\(question)”. Stop stalling and open the deck — you've spent 73 minutes on social today."
     })
