@@ -15,7 +15,8 @@ final class ProcessSidecarTransport: SidecarTransport {
     var onTerminate: (() -> Void)?
     private let nodeURL: URL
     private let scriptURL: URL
-    private let environment: [String: String]
+    /// Mutable so the host can inject a freshly-fetched auth token before `start()`.
+    var environment: [String: String]
     private let process = Process()
     private let stdinPipe = Pipe()
     private let stdoutPipe = Pipe()

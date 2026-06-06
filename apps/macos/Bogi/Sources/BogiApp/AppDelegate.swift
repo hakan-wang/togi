@@ -21,8 +21,11 @@ final class AppState: ObservableObject {
     let search: SearchService
     let goals: GoalsService
     let insights: InsightsService
+    let sidecar: SidecarClient
+    private let sidecarTransport: ProcessSidecarTransport
     let coach: CoachService
     let judge: JudgeService
+    let nudgeGate = NudgeGate()
 
     @Published var capturePaused: Bool {
         didSet {
@@ -38,7 +41,7 @@ final class AppState: ObservableObject {
     /// Set by the AppDelegate after launch; drives the Calendars settings UI.
     @Published var calendarSync: CalendarSyncCoordinator?
 
-    init(database: DatabaseService) {
+    init(database: DatabaseService, databasePath: String) {
         self.database = database
         let settings = SettingsStore(database: database)
         self.settings = settings
@@ -67,7 +70,6 @@ final class AppState: ObservableObject {
         self.observations = ObservationStore(database: database)
         self.segments = SegmentStore(database: database)
         self.plannedBlocks = plannedBlocks
-        self.planner = PlannerService(repository: plannedBlocks)
         self.eventKit = EventKitService()
         self.googleCalendar = GoogleCalendarService(redirectScheme: GoogleConfig.redirectScheme)
         self.search = SearchService(
@@ -79,15 +81,42 @@ final class AppState: ObservableObject {
         let insights = InsightsService(database: database)
         self.goals = goals
         self.insights = insights
-        self.coach = CoachService(
-            inference: inference, insights: insights, search: search,
-            goals: goals, database: database
-        )
+
+        // On-device agent sidecar (bundled Node + LangChain.js). Coach, Planner, and the
+        // nudge path all route through it; raw data never leaves the device.
+        let resources = Bundle.main.resourceURL!.appendingPathComponent("sidecar")
+        let env: [String: String] = [
+            "BOGI_BACKEND_URL": BackendConfig.baseURL.absoluteString,
+            "BOGI_AUTH_TOKEN": "",   // filled per-request via the proxy; placeholder for launch
+            "BOGI_DB_PATH": databasePath,
+            // better-sqlite3 ships next to main.cjs, so require() resolves it from the sidecar dir.
+            "NODE_PATH": resources.path,
+        ]
+        let transport = ProcessSidecarTransport(
+            nodeURL: resources.appendingPathComponent("node"),
+            scriptURL: resources.appendingPathComponent("main.cjs"),
+            environment: env)
+        self.sidecarTransport = transport
+        let sidecar = SidecarClient(transport: transport)
+        self.sidecar = sidecar
+
+        self.planner = PlannerService(repository: plannedBlocks, sidecar: sidecar)
+        self.coach = CoachService(backend: sidecar, threadId: "coach")
         self.judge = JudgeService(inference: inference, segmentStore: segments)
 
         let paused = settings.bool("paused", default: false)
         self.capturePaused = paused
         capture.isPaused = paused
+    }
+
+    /// Inject a freshly-fetched auth token into the sidecar's environment, then launch it.
+    /// Called once at startup after the access token is available.
+    func startSidecar() async {
+        let token = await auth.currentAccessToken() ?? ""
+        sidecarTransport.environment["BOGI_AUTH_TOKEN"] = token
+        do { try sidecar.start() } catch {
+            NSLog("Bogi: failed to start sidecar: \(error)")
+        }
     }
 }
 
@@ -101,13 +130,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         let db: DatabaseService
+        let path = DatabaseService.defaultPath()
+        var dbPath = path
         do {
-            db = try DatabaseService(path: DatabaseService.defaultPath())
+            db = try DatabaseService(path: path)
         } catch {
             NSLog("Bogi: failed to open database: \(error). Falling back to in-memory.")
             db = try! DatabaseService(inMemory: true)
+            dbPath = ":memory:"
         }
-        appState = AppState(database: db)
+        appState = AppState(database: db, databasePath: dbPath)
         super.init()
     }
 
@@ -124,11 +156,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mascot.show()
         self.mascot = mascot
 
+        // Wire the agent's action tools to app-only side effects: calendar writes + nudges.
+        let planner = appState.planner
+        let presenter = self.presenter
+        let actions = SidecarActionHandlers(
+            createBlock: { title, start, end in
+                await MainActor.run {
+                    planner.createLocalBlock(title: title, start: start, end: end, category: nil).id
+                }
+            },
+            moveBlock: { match, start, end in
+                await MainActor.run {
+                    planner.moveBlock(matching: match, start: start, end: end)?.id
+                }
+            },
+            postNudge: { [weak self] severity, message in
+                await MainActor.run {
+                    guard let self else { return }
+                    let decision = presenter.present(message: message, now: Date())
+                    self.applyNudge(decision, onTask: false)
+                }
+            })
+        appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
+
+        // Launch the sidecar once a fresh auth token is available.
+        Task { await self.appState.startSidecar() }
+
         let coordinator = JudgeCoordinator(
             judge: appState.judge,
             observations: appState.observations,
             blocks: appState.plannedBlocks,
-            presenter: presenter
+            presenter: presenter,
+            nudgeGate: appState.nudgeGate,
+            sidecar: appState.sidecar
         ) { [weak self] decision, onTask in
             self?.applyNudge(decision, onTask: onTask)
         }
