@@ -18,14 +18,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Bogi"
 cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
-# Copy SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle holding the mascot image) so
-# Bundle.module resolves at runtime inside the .app.
-for bundle in "$(dirname "$BIN")"/*.bundle; do
-  [ -e "$bundle" ] || continue
-  cp -R "$bundle" "$APP/Contents/MacOS/"
-  cp -R "$bundle" "$APP/Contents/Resources/"
-done
-# cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
+# Stage app assets directly into Contents/Resources so Bundle.main resolves them at
+# runtime. We deliberately do NOT ship SwiftPM resource bundles (e.g. Bogi_BogiApp.bundle):
+# the generated Bundle.module accessor only searches the .app root + a hardcoded build
+# path, so it traps on launch inside a packaged .app. See Sources/BogiApp/UI/BogiTheme.swift.
+cp "Sources/BogiApp/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
 
 echo "== sidecar (Node + LangChain.js agent) =="
 SIDECAR_SRC="sidecar"

@@ -22,10 +22,11 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui")
-            ],
-            resources: [
-                .copy("Resources/mascot.png")
             ]
+            // mascot.png is NOT declared as an SPM resource: the generated Bundle.module
+            // accessor only searches the .app root + a hardcoded build path, so it traps
+            // at launch inside a packaged app. Instead build-app.sh stages mascot.png into
+            // Contents/Resources and BogiAsset loads it via Bundle.main. See BogiTheme.swift.
         ),
         .testTarget(
             name: "BogiAppTests",

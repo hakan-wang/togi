@@ -25,11 +25,17 @@ enum BogiGradient {
     )
 }
 
-/// The mascot IS the logo: the baby-blue plush axolotl. Loaded from the bundled asset,
+/// The mascot IS the logo: the baby-blue plush axolotl. Loaded from the main app
+/// bundle's Resources (mascot.png is staged into Contents/Resources by build-app.sh),
 /// with an SF Symbol fallback so the UI never breaks if the resource is missing.
+///
+/// NOTE: we deliberately load from `Bundle.main`, not `Bundle.module`. The SwiftPM
+/// resource-bundle accessor only searches `Bundle.main.bundleURL` (the .app root) and
+/// a hardcoded build path, neither of which is valid inside a signed/notarized .app —
+/// it traps on launch. Loading from Bundle.main matches the standard macOS layout.
 enum BogiAsset {
     static let mascot: Image = {
-        if let url = Bundle.module.url(forResource: "mascot", withExtension: "png"),
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return Image(nsImage: image)
         }
