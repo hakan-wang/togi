@@ -23,6 +23,8 @@ struct MenuBarContent: View {
 
         Toggle("Show Mascot", isOn: $appState.mascotVisible)
 
+        Toggle("Launch at Login", isOn: $appState.launchAtLogin)
+
         Divider()
 
         SettingsLink {

@@ -42,6 +42,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Whether Togi launches automatically at login. Backed by the system Login Items
+    /// list (via `LoginItemService`); persisted only as a record of the user's intent.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            settings.setBool("launch_at_login", launchAtLogin)
+            LoginItemService.setEnabled(launchAtLogin)
+        }
+    }
+
     /// Wired by the AppDelegate after launch (menu-bar actions call these).
     var openDashboard: (() -> Void)?
     var runJudgeNow: (() -> Void)?
@@ -122,6 +131,9 @@ final class AppState: ObservableObject {
         capture.isPaused = paused
 
         self.mascotVisible = settings.bool("mascot_visible", default: true)
+        // Reflect the live Login Items state so the toggle matches reality even if the
+        // user changed it in System Settings. First-run opt-in happens in the delegate.
+        self.launchAtLogin = LoginItemService.isEnabled
     }
 
     /// Inject a freshly-fetched auth token into the sidecar's environment, then launch it.
@@ -190,6 +202,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.mascot = mascot
             showCompanion()
             return
+        }
+
+        // First launch: opt into launch-at-login so Togi reappears every login with no
+        // setup. Only on the very first run (no stored preference) — respect later changes.
+        if appState.settings.string("launch_at_login") == nil {
+            appState.launchAtLogin = true
         }
 
         if appState.capture.permissionState != .granted {
