@@ -59,7 +59,7 @@ struct MascotView: View {
     }
 }
 
-/// Small non-modal callout above the mascot. Blunt, not naggy — copy comes from the caller.
+/// Small non-modal callout above the mascot. Supportive, not naggy. Copy comes from the caller.
 private struct SpeechBubble: View {
     let text: String
     let escalationLevel: Int

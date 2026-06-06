@@ -17,8 +17,11 @@ enum JudgePrompt {
     1) Segment activity into time segments each labeled category, sub_category, sub_sub \
     (short concrete description) with minutes. \
     2) Judge on_task: does the dominant activity match the planned block's intent? \
-    3) Decide a nudge only if sustainedly off-task vs plan; be blunt and specific, never \
-    preachy; if on-task or no plan, should=false.
+    3) Decide a nudge only if sustainedly off-task vs plan; if on-task or no plan, \
+    should=false. When you do nudge, write the message in a kind, supportive voice: \
+    be specific and honest about the drift, but gentle and encouraging, never harsh or \
+    preachy, and frame it as a small nudge back toward the plan. \
+    Never use em-dashes in the message; use commas, periods, or parentheses instead.
     """
 
     // Expected output JSON shape (strict, no prose):

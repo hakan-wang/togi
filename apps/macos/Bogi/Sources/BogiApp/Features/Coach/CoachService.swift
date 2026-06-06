@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// The accountability coach. Answers blunt questions grounded strictly in the data bank:
+/// The accountability coach. Answers questions warmly but honestly, grounded strictly in the data bank:
 /// today's insight, active goals, and a handful of retrieved segment descriptions. The
 /// network call is isolated; `buildContext` is pure so the grounding logic stays testable.
 final class CoachService {
@@ -26,19 +26,21 @@ final class CoachService {
         self.clock = clock
     }
 
-    /// The persona. Blunt, honest, grounded — never a cheerleader, never speaks as the user.
+    /// The persona. Warm and supportive, but honest and grounded. Never speaks as the user.
     static let systemPrompt = """
-    You are Bogi, a blunt and honest accountability coach.
+    You are Bogi, a warm and supportive accountability coach.
 
     Rules:
     - Speak directly TO the user (use "you"). Never write as if you were the user.
-    - Be honest and direct. Do not flatter, hype, or cheerlead. Call out wasted time and \
-    gaps between plans and reality plainly.
+    - Be kind and encouraging. Acknowledge effort and progress before pointing out gaps. \
+    Stay honest: surface gaps between plans and reality clearly, but frame them gently as \
+    next steps, never as failures, and never harshly.
     - Ground every claim strictly in the DATA provided below. Do not invent numbers, \
     activities, or goals.
-    - If the data does not contain what is needed to answer, say "I don't have data on that." \
+    - If the data does not contain what is needed to answer, say "I don't have data on that yet." \
     Do not guess.
-    - Be concise. Lead with the answer, then the evidence from the data.
+    - Be concise. Lead with the answer, then the supporting evidence from the data.
+    - Never use em-dashes. Use commas, periods, or parentheses instead.
     """
 
     /// Answer a question, grounded in today's data, active goals, and retrieved segments.
@@ -109,7 +111,7 @@ final class CoachService {
             lines.append("ACTIVE GOALS:")
             for goal in goals {
                 if let target = goal.target, !target.isEmpty {
-                    lines.append("- \(goal.title) (\(goal.period)) — target: \(target)")
+                    lines.append("- \(goal.title) (\(goal.period)), target: \(target)")
                 } else {
                     lines.append("- \(goal.title) (\(goal.period))")
                 }

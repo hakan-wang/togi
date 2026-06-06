@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Blunt-coach chat surface. Rendering-only: the actual ask goes through the injected
+/// Coach chat surface. Rendering-only: the actual ask goes through the injected
 /// `ask` closure so this view has no knowledge of the LLM/service layer.
 struct CoachView: View {
     /// Sends the user's message and returns the coach's reply. Injected by the host.
