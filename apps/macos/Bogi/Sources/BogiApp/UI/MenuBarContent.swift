@@ -13,6 +13,14 @@ struct MenuBarContent: View {
 
         Toggle("Show Mascot", isOn: $appState.mascotVisible)
 
+        Menu("Togi vitality (demo)") {
+            Button("Thriving") { appState.setVitalityDemo?(95) }
+            Button("Happy") { appState.setVitalityDemo?(72) }
+            Button("Flat") { appState.setVitalityDemo?(50) }
+            Button("Tired") { appState.setVitalityDemo?(28) }
+            Button("Not okay") { appState.setVitalityDemo?(8) }
+        }
+
         Divider()
 
         SettingsLink {

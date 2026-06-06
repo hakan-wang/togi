@@ -48,6 +48,8 @@ final class AppState: ObservableObject {
     var runJudgeNow: (() -> Void)?
     /// Wired by the AppDelegate to show/hide the mascot panel when the preference flips.
     var onMascotVisibilityChanged: ((Bool) -> Void)?
+    /// Demo hook: set Togi's wellbeing 0…100 to preview the thrive/wilt states live.
+    var setVitalityDemo: ((Double) -> Void)?
 
     /// Set by the AppDelegate after launch; drives the Calendars settings UI.
     @Published var calendarSync: CalendarSyncCoordinator?
@@ -272,6 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         appState.openDashboard = { [weak self] in self?.showCompanion() }
         appState.runJudgeNow = { [weak self] in Task { await self?.coordinator?.tick() } }
+        appState.setVitalityDemo = { [weak self] value in self?.mascot?.viewModel.setVitality(value) }
 
         let calendarSync = CalendarSyncCoordinator(
             google: appState.googleCalendar, planner: appState.planner, settings: appState.settings
@@ -282,6 +285,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
         guard let mascot else { return }
+        // Wellbeing rides the real loop: each read nudges Togi toward thriving (on-task)
+        // or wilting (off-task). The body's look follows in MascotView.
+        mascot.viewModel.nudgeVitality(onTask: onTask)
         if decision.show {
             // Auto-reappear even when hidden, so a real nudge still reaches the user.
             mascot.show()

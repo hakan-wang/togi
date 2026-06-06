@@ -20,6 +20,9 @@ final class CompanionPanel: NSPanel {
         hidesOnDeactivate = false
         animationBehavior = .utilityWindow
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // The brand is light and dreamy: pin the card to a light appearance so the frosted
+        // glass stays readable over any wallpaper, even with the system in dark mode.
+        appearance = NSAppearance(named: .aqua)
 
         let host = NSHostingView(rootView: content())
         host.autoresizingMask = [.width, .height]
