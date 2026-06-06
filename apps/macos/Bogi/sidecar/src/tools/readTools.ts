@@ -9,11 +9,23 @@ function ftsExpr(keywords: string): string {
   return toks.map((t) => `"${t}"`).join(" OR ");
 }
 
+/// Normalize a range bound for string comparison against ISO datetime rows. A date-only value
+/// like "2026-06-06" must cover the whole day: as a start it becomes the day's first instant,
+/// as an end the day's last. Without this, end="2026-06-06" sorts BEFORE "2026-06-06T09:00:00Z"
+/// and excludes every same-day row. Values that already carry a time are returned unchanged.
+function normalizeBound(value: string | null | undefined, which: "start" | "end"): string | null {
+  if (value == null || value === "") return null;
+  if (value.length <= 10) return which === "start" ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`;
+  return value;
+}
+
 export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
   const search_activity = tool(
     async ({ keywords, start, end, limit }) => {
       const db = open();
       try {
+        const lo = normalizeBound(start, "start");
+        const hi = normalizeBound(end, "end");
         const rows = db.prepare(
           `SELECT s.start_at AS start_at, s.category AS category, s.on_task AS on_task, f.description AS description
              FROM segment_fts f JOIN activity_segments s ON s.id = f.segment_id
@@ -21,7 +33,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
               AND (? IS NULL OR s.start_at >= ?)
               AND (? IS NULL OR s.start_at <= ?)
             ORDER BY s.start_at DESC LIMIT ?`
-        ).all(ftsExpr(keywords), start ?? null, start ?? null, end ?? null, end ?? null, limit ?? 20);
+        ).all(ftsExpr(keywords), lo, lo, hi, hi, limit ?? 20);
         return JSON.stringify({ results: rows });
       } finally { db.close(); }
     },
@@ -41,9 +53,11 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
     async ({ start, end }) => {
       const db = open();
       try {
+        const lo = normalizeBound(start, "start");
+        const hi = normalizeBound(end, "end");
         const segs = db.prepare(
           `SELECT minutes, category, on_task FROM activity_segments WHERE start_at >= ? AND start_at <= ?`
-        ).all(start, end) as { minutes: number; category: string | null; on_task: number | null }[];
+        ).all(lo, hi) as { minutes: number; category: string | null; on_task: number | null }[];
         const totalMinutes = segs.reduce((a, s) => a + s.minutes, 0);
         const onTaskMinutes = segs.filter((s) => s.on_task === 1).reduce((a, s) => a + s.minutes, 0);
         const byCat = new Map<string, number>();
@@ -53,7 +67,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
           .sort((a, b) => b.minutes - a.minutes).slice(0, 8);
         const blocks = db.prepare(
           `SELECT title, start_at, end_at FROM planned_blocks WHERE start_at >= ? AND start_at <= ? ORDER BY start_at`
-        ).all(start, end);
+        ).all(lo, hi);
         return JSON.stringify({ totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks });
       } finally { db.close(); }
     },
@@ -71,13 +85,15 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
     async ({ start, end }) => {
       const db = open();
       try {
+        const lo = normalizeBound(start, "start");
+        const hi = normalizeBound(end, "end");
         const rows = db.prepare(
           `SELECT substr(start_at,1,10) AS date,
                   SUM(minutes) AS totalMinutes,
                   SUM(CASE WHEN on_task = 1 THEN minutes ELSE 0 END) AS onTaskMinutes
              FROM activity_segments WHERE start_at >= ? AND start_at <= ?
             GROUP BY date ORDER BY date`
-        ).all(start, end);
+        ).all(lo, hi);
         return JSON.stringify({ days: rows });
       } finally { db.close(); }
     },

@@ -42,6 +42,15 @@ test("summarize_range aggregates on/off task + categories", async () => {
   expect(out.topCategories[0].category).toBe("Work");
 });
 
+test("date-only bounds cover the whole day (summarize_range)", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const summarize = tools.find((t) => t.name === "summarize_range")!;
+  // Bare dates, no time component — must still capture same-day datetime rows.
+  const out = JSON.parse(await summarize.invoke({ start: "2026-06-01", end: "2026-06-01" }));
+  expect(out.totalMinutes).toBe(50);
+  expect(out.onTaskMinutes).toBe(30);
+});
+
 test("list_days returns per-day totals", async () => {
   const tools = makeReadTools(() => openReadOnly(path));
   const listDays = tools.find((t) => t.name === "list_days")!;

@@ -21,8 +21,14 @@ export function makeDispatcher(deps: {
       try {
         deps.setToken?.(msg.token);
         if (deps.agent.__bogiModel) deps.agent.__bogiModel.activeRequestId = msg.id;
+        // The model has no inherent sense of "now". Inject the current time so it can resolve
+        // relative dates ("today", "yesterday", "last week", "tomorrow at 3pm") against it when
+        // calling the data and calendar tools.
+        const content =
+          `Current date and time: ${new Date().toISOString()}. ` +
+          `Resolve any relative dates and times against this.\n\n${msg.text}`;
         const res = await deps.agent.invoke(
-          { messages: [{ role: "user", content: msg.text }] },
+          { messages: [{ role: "user", content }] },
           { configurable: { thread_id: msg.threadId }, recursionLimit: 12 }
         );
         const text = String(res.messages.at(-1)?.content ?? "");
