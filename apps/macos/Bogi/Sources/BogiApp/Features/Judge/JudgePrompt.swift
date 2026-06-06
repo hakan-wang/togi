@@ -4,7 +4,7 @@ import Foundation
 /// the recent observations, and how long the user has already drifted off-task.
 struct JudgeInput {
     var activeBlock: (title: String, category: String?, startAt: Date, endAt: Date)?
-    var observations: [(t: Date, app: String?, window: String?, text: String?)]
+    var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
 }
 
@@ -59,7 +59,7 @@ enum JudgePrompt {
         root["recent_off_task_minutes"] = input.recentOffTaskMinutes
 
         root["observations"] = input.observations.map { obs -> [String: Any] in
-            var o: [String: Any] = ["t": iso.string(from: obs.t)]
+            var o: [String: Any] = ["t": iso.string(from: obs.t), "focused": obs.focused]
             if let app = obs.app { o["app"] = app }
             if let window = obs.window { o["window"] = window }
             if let text = obs.text { o["text"] = text }

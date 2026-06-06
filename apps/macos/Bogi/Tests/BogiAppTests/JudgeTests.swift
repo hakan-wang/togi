@@ -91,7 +91,7 @@ final class JudgeTests: XCTestCase {
             activeBlock: (title: "Deep work", category: "Work",
                           startAt: start, endAt: start.addingTimeInterval(3600)),
             observations: [
-                (t: start, app: "X", window: "Home", text: "scrolling"),
+                (t: start, app: "X", window: "Home", text: "scrolling", focused: true),
             ],
             recentOffTaskMinutes: 0
         )
@@ -124,5 +124,15 @@ final class JudgeTests: XCTestCase {
 
         XCTAssertEqual(store.count(), 1)
         XCTAssertFalse(nudge.should)
+    }
+
+    func testUserJSONIncludesFocusedFlag() {
+        let input = JudgeInput(
+            activeBlock: nil,
+            observations: [(t: Date(timeIntervalSince1970: 0), app: "Xcode",
+                            window: "Bogi", text: "code", focused: true)],
+            recentOffTaskMinutes: 0)
+        let json = JudgePrompt.userJSON(input)
+        XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
     }
 }
