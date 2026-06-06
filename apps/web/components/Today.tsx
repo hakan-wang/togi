@@ -113,10 +113,6 @@ export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | n
       </div>
 
       <div className="checkin-side">
-        <div className="checkin-keys">
-          <span><kbd>Enter</kbd> {mode === "type" ? "send" : "done"}</span>
-          <span><kbd>Esc</kbd> cancel</span>
-        </div>
         <div className="checkin-ctrls">
           {mode === "voice" && !busy && (
             <button className="checkin-ctrl" onClick={() => (rec.isPaused ? rec.resume() : rec.pause())} title={rec.isPaused ? "Resume" : "Pause"}>
@@ -127,15 +123,15 @@ export function TodayCheckin({ onSubmit }: { onSubmit: (input: { blob?: Blob | n
             <button className="checkin-ctrl" onClick={() => { rec.cancel(); setMode("type"); }}><IcChat size={13} /> type instead</button>
           )}
           {mode === "voice" && !busy && (
-            <button className="checkin-ctrl" onClick={submitVoice} title="Submit (Enter)"><IcMic size={13} /> done</button>
+            <button className="checkin-ctrl checkin-done" onClick={submitVoice} title="Submit (Enter)"><IcMic size={13} /> Done <kbd>Enter</kbd></button>
           )}
           {mode === "type" && !busy && (
-            <button className="checkin-ctrl" onClick={submitText} title="Send"><IcArrow size={13} /> send</button>
+            <button className="checkin-ctrl checkin-done" onClick={submitText} title="Send (Enter)"><IcArrow size={13} /> Send <kbd>Enter</kbd></button>
           )}
         </div>
       </div>
 
-      <button className="checkin-x" title="Cancel (Esc)" onClick={mode === "voice" ? cancelVoice : collapse}><IcClose size={15} /></button>
+      <button className="checkin-x" title="Cancel (Esc)" onClick={mode === "voice" ? cancelVoice : collapse}><kbd>Esc</kbd><IcClose size={15} /></button>
     </div>
   );
 }

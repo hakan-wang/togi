@@ -255,6 +255,14 @@
 .checkin-live.paused { color: var(--togi-muted); }
 .checkin-live.paused svg { color: #e0922a; }
 .checkin-mascot { filter: drop-shadow(0 4px 7px rgba(29,26,22,0.18)); }
+/* Enter hint sits inside the Done/Send button; Esc sits on the X pill */
+.checkin-done { background: var(--togi-live); border-color: var(--togi-live); color: #fff; }
+.checkin-done:hover { background: #2a61dd; }
+.checkin-done svg { color: #fff; }
+.checkin-ctrl kbd, .checkin-x kbd { font-family: var(--font-mono); font-size: 9.5px; line-height: 1; padding: 2px 5px; border-radius: 4px; }
+.checkin-done kbd { background: rgba(255,255,255,0.22); color: #fff; }
+.checkin-x { width: auto; gap: 5px; padding: 0 9px; border-radius: 999px; }
+.checkin-x kbd { background: transparent; color: var(--togi-muted); padding: 0; }
 
 /* ---- slim insight banner ---- */
 .insight-banner {
