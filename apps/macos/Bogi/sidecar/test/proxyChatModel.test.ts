@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { HumanMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { BogiProxyChatModel } from "../src/proxyChatModel.js";
 
 test("maps a tool_use response into AIMessage.tool_calls", async () => {
@@ -25,4 +25,15 @@ test("maps a plain text response into AIMessage content", async () => {
   });
   const res = await model.invoke([new HumanMessage("summary")]);
   expect(res.content).toBe("you focused 2h");
+});
+
+test("system messages are not sent as user turns (Converse needs alternating roles)", async () => {
+  let captured: any;
+  const model = new BogiProxyChatModel({
+    post: async (body) => { captured = body; return { text: "ok", stopReason: "end_turn", content: [{ type: "text", text: "ok" }] }; },
+    system: "PERSONA",
+  });
+  await model.invoke([new SystemMessage("PERSONA"), new HumanMessage("hi")]);
+  const roles = captured.messages.map((m: any) => m.role);
+  expect(roles).toEqual(["user"]); // the system message must be filtered out, not mapped to user
 });

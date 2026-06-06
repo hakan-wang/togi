@@ -24,7 +24,9 @@ export interface BogiProxyChatModelFields extends BaseChatModelParams {
 }
 
 function toInferMessages(messages: BaseMessage[]): InferRequest["messages"] {
-  return messages.map((m) => {
+  return messages
+    .filter((m) => m.getType() !== "system")
+    .map((m) => {
     const role = m.getType() === "human" ? "user" : m.getType() === "ai" ? "assistant" : "user";
     if (m.getType() === "tool") {
       const tm = m as unknown as { tool_call_id: string; content: string };
