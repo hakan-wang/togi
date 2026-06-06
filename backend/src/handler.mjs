@@ -104,7 +104,10 @@ async function stripeWebhook(event) {
 async function authUser(event) {
   if (AUTH_DISABLED) return { id: "dev-user" };
   if (!SUPABASE_URL) return null;
-  const auth = event.headers?.authorization || event.headers?.Authorization;
+  // CloudFront OAC owns the `Authorization` header (SigV4), so the app sends the Supabase
+  // access token in `X-Bogi-Authorization`. Fall back to Authorization for direct/dev calls.
+  const h = event.headers || {};
+  const auth = h["x-bogi-authorization"] || h["X-Bogi-Authorization"] || h.authorization || h.Authorization;
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) return null;
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
