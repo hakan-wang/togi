@@ -267,6 +267,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let hosting = gateHosting {
             hosting.rootView = view
         } else {
+            // Reuse a single hosting controller; `sizingOptions = []` stops SwiftUI from
+            // resizing the window (the Auto Layout feedback loop that aborted AppKit on launch),
+            // and a fixed content size below covers every gate state.
             let hosting = NSHostingController(rootView: view)
             hosting.sizingOptions = []
             let win = NSWindow(contentViewController: hosting)

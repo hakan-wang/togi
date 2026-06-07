@@ -59,7 +59,7 @@ enum BogiAsset {
     }()
 
     static let mascot: Image = {
-        if let url = resourceBundle.url(forResource: "mascot", withExtension: "png"),
+        if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             return Image(nsImage: image)
         }
