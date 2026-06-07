@@ -17,9 +17,17 @@ Everything we built is saved. Nothing is lost.
 ---
 
 ## A) Keep working on your OWN Claude account (simplest — nothing to download)
-1. In the Claude Code app: sign out of the current account, sign into **your** account.
+1. In the Claude Code app: **sign out** of the current account, **sign into yours**.
 2. Open the **same folder**: `~/togi` (it's already on this Mac).
-3. Done. All the code is right there — keep building.
+3. Start a chat and **paste this first message** so the new Claude gets all the context:
+
+   > This is my Togi project. Please read `CLAUDE.md`, then `docs/PROJECT_CONTEXT.md`, then
+   > `HANDOFF.md` before doing anything. The app is in `apps/web` on branch `feat/web-app`.
+   > When you're done reading, run `cd apps/web && npm install && npm run dev` so I can preview
+   > it, and give me a 5-line summary of where the project stands and what you'd do next.
+
+   (`CLAUDE.md` is also read automatically — but pasting the message makes sure.)
+4. Done. All the code is right there — keep building, nothing rebuilt from scratch.
 
 ## B) Get a fresh copy (new computer, or just to be safe)
 Clone YOUR private repo (it'll ask you to sign into GitHub as hakan-wang):
