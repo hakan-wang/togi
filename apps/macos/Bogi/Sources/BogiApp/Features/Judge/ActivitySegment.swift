@@ -11,9 +11,10 @@ struct ActivitySegment: Codable, FetchableRecord, PersistableRecord, TableRecord
     var endAt: Date
     var minutes: Double
     var plannedBlockId: String?
-    var category: String?
-    var subCategory: String?
-    var subSub: String?
+    var cat: String?
+    var sub: String?
+    var title: String?
+    var desc: String?
     var onTask: Bool?
     var confidence: Double?
     var judgedAt: Date
@@ -24,9 +25,10 @@ struct ActivitySegment: Codable, FetchableRecord, PersistableRecord, TableRecord
         case endAt = "end_at"
         case minutes
         case plannedBlockId = "planned_block_id"
-        case category
-        case subCategory = "sub_category"
-        case subSub = "sub_sub"
+        case cat
+        case sub
+        case title
+        case desc
         case onTask = "on_task"
         case confidence
         case judgedAt = "judged_at"

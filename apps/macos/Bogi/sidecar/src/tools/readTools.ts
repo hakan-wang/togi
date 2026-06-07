@@ -40,7 +40,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const hi = normalizeBound(end, "end");
         const cap = limit ?? 20;
         const rows = db.prepare(
-          `SELECT s.start_at AS start_at, s.category AS category, s.on_task AS on_task, f.description AS description
+          `SELECT s.start_at AS start_at, s.cat AS category, s.on_task AS on_task, f.description AS description
              FROM segment_fts f JOIN activity_segments s ON s.id = f.segment_id
             WHERE segment_fts MATCH ?
               AND (? IS NULL OR datetime(s.start_at) >= datetime(?))
@@ -87,13 +87,21 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const lo = normalizeBound(start, "start");
         const hi = normalizeBound(end, "end");
         const segs = db.prepare(
-          `SELECT minutes, category, on_task FROM activity_segments
+          `SELECT minutes, cat AS category, on_task FROM activity_segments
             WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)`
         ).all(lo, hi) as { minutes: number; category: string | null; on_task: number | null }[];
         const blocks = db.prepare(
           `SELECT title, start_at, end_at FROM planned_blocks
             WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?) ORDER BY start_at`
         ).all(lo, hi);
+        const events = db.prepare(
+          `SELECT title, cat, start_at, end_at FROM user_events
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?) ORDER BY start_at`
+        ).all(lo, hi);
+        const recentInsights = db.prepare(
+          `SELECT id, title, desc, confidence FROM journal
+            WHERE kind = 'insight' AND status = 'active' ORDER BY created_at DESC LIMIT 5`
+        ).all();
 
         if (segs.length === 0) {
           // Fallback: no judged segments yet — estimate from raw observations grouped by app.
@@ -116,6 +124,8 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
             totalMinutes: minutesFromObservations(observationCount),
             topCategories,
             plannedBlocks: blocks,
+            events,
+            recentInsights,
           });
         }
 
@@ -126,7 +136,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const topCategories = [...byCat.entries()]
           .map(([category, minutes]) => ({ category, minutes }))
           .sort((a, b) => b.minutes - a.minutes).slice(0, 8);
-        return JSON.stringify({ source: "segments", totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks });
+        return JSON.stringify({ source: "segments", totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks, events, recentInsights });
       } finally { db.close(); }
     },
     {
@@ -167,19 +177,107 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
   );
 
   const list_goals = tool(
-    async () => {
+    async ({ includeAll }) => {
       const db = open();
       try {
-        const rows = db.prepare(`SELECT title, period, target FROM goals ORDER BY created_at`).all();
+        const where = includeAll ? "" : "WHERE status = 'active'";
+        const rows = db.prepare(
+          `SELECT id, title, period, target, why, status, cat FROM goals ${where} ORDER BY created_at`
+        ).all();
         return JSON.stringify({ goals: rows });
       } finally { db.close(); }
     },
     {
       name: "list_goals",
-      description: "List the user's active goals and their targets so you can reason about progress.",
+      description: "List the user's goals (id, title, period, target, why, status, cat). Active only by default; pass includeAll to include done/abandoned goals.",
+      schema: z.object({ includeAll: z.boolean().nullish() }),
+    }
+  );
+
+  const list_categories = tool(
+    async () => {
+      const db = open();
+      try {
+        const rows = db.prepare(
+          `SELECT id, name, color, description FROM category_registry ORDER BY sort_order`
+        ).all();
+        return JSON.stringify({ categories: rows });
+      } finally { db.close(); }
+    },
+    {
+      name: "list_categories",
+      description: "List the user's current categories (id, name, color). Call this before labeling activity so you reuse an existing category when one fits.",
       schema: z.object({}),
     }
   );
 
-  return [search_activity, summarize_range, list_days, list_goals];
+  const read_behaviour = tool(
+    async () => {
+      const db = open();
+      try {
+        const get = (k: string) => (db.prepare(`SELECT value FROM settings WHERE key = ?`).get(k) as any)?.value ?? null;
+        return JSON.stringify({
+          name: get("user_display_name"),
+          northStar: get("north_star"),
+          northStarWhy: get("north_star_why"),
+          behaviour: get("behaviour_profile"),
+        });
+      } finally { db.close(); }
+    },
+    {
+      name: "read_behaviour",
+      description: "Recall what you know about the user: their name, their north-star goal (and why), and the behaviour patterns you have learned. Call before judging activity or answering questions about their habits.",
+      schema: z.object({}),
+    }
+  );
+
+  const list_events = tool(
+    async ({ start, end }) => {
+      const db = open();
+      try {
+        const lo = normalizeBound(start, "start");
+        const hi = normalizeBound(end, "end");
+        const rows = db.prepare(
+          `SELECT id, title, desc, cat, sub, start_at, end_at FROM user_events
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)
+            ORDER BY start_at`
+        ).all(lo, hi);
+        return JSON.stringify({ events: rows });
+      } finally { db.close(); }
+    },
+    {
+      name: "list_events",
+      description: "List the user's real-world commitments (gym, meetings, appointments) in a date range.",
+      schema: z.object({ start: z.string(), end: z.string() }),
+    }
+  );
+
+  const list_journal = tool(
+    async ({ kind, goal_id, limit }) => {
+      const db = open();
+      try {
+        const clauses: string[] = ["status = 'active'"];
+        const args: any[] = [];
+        if (kind) { clauses.push("kind = ?"); args.push(kind); }
+        if (goal_id) { clauses.push("goal_id = ?"); args.push(goal_id); }
+        const cap = limit ?? 20;
+        const rows = db.prepare(
+          `SELECT id, created_at, kind, goal_id, cat, title, desc, confidence FROM journal
+            WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ?`
+        ).all(...args, cap);
+        return JSON.stringify({ entries: rows });
+      } finally { db.close(); }
+    },
+    {
+      name: "list_journal",
+      description: "List your past notes (insights you noticed, goal progress, check-ins). Filter by kind ('insight'|'progress'|'checkin'|'milestone') or goal_id. Call before logging an insight so you do not repeat one you already recorded.",
+      schema: z.object({
+        kind: z.string().nullish(),
+        goal_id: z.string().nullish(),
+        limit: z.number().int().positive().nullish(),
+      }),
+    }
+  );
+
+  return [search_activity, summarize_range, list_days, list_goals, list_categories, read_behaviour, list_events, list_journal];
 }
