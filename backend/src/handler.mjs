@@ -51,12 +51,34 @@ export const handler = async (event) => {
 
 // --- Bedrock ---
 
+// Bedrock throws on transient conditions (throttling, brief 5xx). Retry those a couple times
+// with backoff so a momentary blip mid-demo doesn't turn into a user-facing 500. Non-transient
+// errors (validation, access denied) fail fast — retrying them is pointless.
+const BEDROCK_RETRYABLE = new Set([
+  "ThrottlingException",
+  "ServiceUnavailableException",
+  "ModelTimeoutException",
+  "InternalServerException",
+]);
+
 async function callBedrock({ system, messages, tools, maxTokens = 1024, temperature = 0 }) {
   const cmd = new ConverseCommand(
     buildConverseInput({ modelId: MODEL_ID, system, messages, tools, maxTokens, temperature })
   );
-  const res = await bedrock.send(cmd);
-  return parseConverseOutput(res);
+  const maxAttempts = 3;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await bedrock.send(cmd);
+      return parseConverseOutput(res);
+    } catch (err) {
+      const name = err?.name || "";
+      const transient = BEDROCK_RETRYABLE.has(name) || err?.$retryable != null;
+      if (!transient || attempt >= maxAttempts) throw err;
+      const delayMs = 250 * 2 ** (attempt - 1); // 250ms, 500ms
+      console.error(`bedrock ${name} (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 }
 
 // Shape the /v1/infer JSON body. Exported for tests.
