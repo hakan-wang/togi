@@ -247,21 +247,28 @@ private struct SpeechBubble: View {
     let escalationLevel: Int
     var onDismiss: (() -> Void)? = nil
 
+    /// The intro is the only variant that supplies a dismiss action. It reads on a black desktop,
+    /// so it gets a solid white fill + black text for crisp contrast; nudges keep the frosted look.
+    private var isIntro: Bool { onDismiss != nil }
+
     var body: some View {
         Text(text)
             .font(escalationLevel >= 2 ? .callout.bold() : .caption)
             .multilineTextAlignment(.center)
-            .foregroundStyle(BogiColor.ink)
+            .foregroundStyle(isIntro ? Color.black : BogiColor.ink)
             // Take the full multi-line height so the nudge wraps instead of truncating to
             // one clipped line ("Hey, you j…") inside the panel.
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(maxWidth: 200)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+                if isIntro { shape.fill(Color.white) } else { shape.fill(.regularMaterial) }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(escalationLevel >= 2 ? Color.red.opacity(0.6) : Color.white.opacity(0.7), lineWidth: 1)
+                    .stroke(strokeColor, lineWidth: 1)
             )
             .overlay(alignment: .topTrailing) {
                 if let onDismiss {
@@ -269,9 +276,9 @@ private struct SpeechBubble: View {
                     // window never becomes key and a Button can swallow the first click. The
                     // existing mascot tap is gesture-based for the same reason.
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(BogiColor.muted)
-                        .background(Circle().fill(.regularMaterial))
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.black.opacity(0.55), Color.white)
+                        .background(Circle().fill(Color.white))
                         .contentShape(Circle())
                         .onTapGesture { onDismiss() }
                         .offset(x: 6, y: -6)
@@ -279,6 +286,11 @@ private struct SpeechBubble: View {
                 }
             }
             .shadow(color: Color(hex: 0x285078).opacity(0.25), radius: 8, y: 4)
+    }
+
+    private var strokeColor: Color {
+        if isIntro { return Color.black.opacity(0.12) }
+        return escalationLevel >= 2 ? Color.red.opacity(0.6) : Color.white.opacity(0.7)
     }
 }
 
