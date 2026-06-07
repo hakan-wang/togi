@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     let search: SearchService
     let goals: GoalsService
     let insights: InsightsService
+    let dashboardFeed: DashboardFeedService
     let sidecar: SidecarClient
     private let sidecarTransport: ProcessSidecarTransport
     let coach: CoachService
@@ -113,6 +114,7 @@ final class AppState: ObservableObject {
         let insights = InsightsService(database: database)
         self.goals = goals
         self.insights = insights
+        self.dashboardFeed = DashboardFeedService(journal: self.journal, goals: goals, events: self.userEvents)
 
         // On-device agent sidecar (bundled Node + LangChain.js). Coach, Planner, and the
         // nudge path all route through it; raw data never leaves the device.
@@ -566,6 +568,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
                 ask: { question, onToken in try await state.coach.ask(question, onToken: onToken) },
+                insightCards: { state.dashboardFeed.insightCards() },
+                goalCards: { state.dashboardFeed.goalCards() },
                 suggest: {
                     CoachService.buildSuggestions(
                         insight: state.insights.insight(for: .day, containing: Date()),

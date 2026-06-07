@@ -4,19 +4,28 @@ import SwiftUI
 /// held up against reality. Pure rendering — all numbers come from the injected insight.
 struct InsightView: View {
     let insight: PeriodInsight
+    /// When embedded, render the content without an owning `ScrollView` (and without the
+    /// outer padding) so a host can stack it above other sections in a single scroll.
+    var embedded: Bool = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                categoriesSection
-                if !insight.blocks.isEmpty {
-                    blocksSection
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        if embedded {
+            content
+        } else {
+            ScrollView { content }
         }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            categoriesSection
+            if !insight.blocks.isEmpty {
+                blocksSection
+            }
+        }
+        .padding(embedded ? 0 : 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Header

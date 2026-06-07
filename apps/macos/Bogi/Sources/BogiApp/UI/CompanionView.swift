@@ -10,6 +10,10 @@ struct CompanionView: View {
 
     let insight: (DashboardPeriod) -> PeriodInsight
     let ask: (_ question: String, _ onToken: @escaping (String) -> Void) async throws -> String
+    /// Active behavioural insights ("Notice") shown below the period stats. Period-independent.
+    var insightCards: () -> [InsightCard] = { [] }
+    /// Active goals with their next check-in and recent journey, shown below the insights.
+    var goalCards: () -> [GoalCard] = { [] }
     /// Live conversation openers for the empty chat state. Injected by the host.
     var suggest: () -> [String] = { [] }
     /// The tallest the card may grow. Used to cap the transcript and the dashboard.
@@ -136,9 +140,13 @@ struct CompanionView: View {
             .padding(.top, 12)
 
             ScrollView {
-                InsightView(insight: insight(period))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                VStack(alignment: .leading, spacing: 20) {
+                    InsightView(insight: insight(period), embedded: true)
+                    NoticeSection(cards: insightCards())
+                    GoalsSection(goals: goalCards())
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
         }
     }
