@@ -26,6 +26,15 @@ final class AppState: ObservableObject {
     private let sidecarTransport: ProcessSidecarTransport
     let coach: CoachService
 
+    /// Shared calendar router — one instance for voice booking AND the Calendars settings UI.
+    let calendar: CalendarRouter
+    /// North Star (apex life-goal) + its best-effort Supabase mirror (the one piece of user
+    /// data Togi syncs — goal text only, never capture data).
+    let northStarSync: NorthStarSync
+    let northStar: NorthStarService
+    /// Hands-free voice scheduling. Built on the main actor by the AppDelegate after launch.
+    @Published var voice: VoiceSession?
+
     @Published var capturePaused: Bool {
         didSet {
             capture.isPaused = capturePaused
@@ -92,12 +101,20 @@ final class AppState: ObservableObject {
             tokenProvider: { await auth.currentAccessToken() }
         )
 
+        // North Star: local-first store backed by a best-effort Supabase mirror. tokenProvider
+        // hands the sync layer a fresh access token per request (nil when signed out → no-op).
+        let northStarSync = NorthStarSync(tokenProvider: { await auth.currentAccessToken() })
+        self.northStarSync = northStarSync
+        self.northStar = NorthStarService(database: database, sync: northStarSync)
+
         let plannedBlocks = PlannedBlockRepository(database: database)
         self.observations = ObservationStore(database: database)
         self.segments = SegmentStore(database: database)
         self.plannedBlocks = plannedBlocks
         self.eventKit = EventKitService()
         self.googleCalendar = GoogleCalendarService()
+        // One CalendarRouter shared by voice booking and the Calendars settings UI.
+        self.calendar = CalendarRouter(eventKit: self.eventKit, settings: settings)
         self.search = SearchService(
             database: database,
             index: VectorIndex(database: database),
@@ -172,6 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var calm: CalmPanel?
     private var calmScheduler: CalmScheduler?
     private var meetingReminders: MeetingReminderCoordinator?
+    private var onboardingWindow: OnboardingWindow?
+    private var voiceHotkey: VoiceHotkeyMonitor?
+    private var voiceCancellables: Set<AnyCancellable> = []
     private var gateWindow: NSWindow?
     private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
     private var gateObservation: AnyCancellable?
@@ -287,7 +307,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startMainExperienceIfNeeded() {
         guard !mainExperienceStarted else { return }
         mainExperienceStarted = true
+
+        // First launch only: run onboarding once, after login, before the mascot/capture loop.
+        // The flag is written by the coordinator's finish() (settings.setBool("onboarding_completed", true)).
+        if !appState.settings.bool("onboarding_completed", default: false) {
+            presentOnboarding { [weak self] in self?.startMainExperience() }
+            return
+        }
         startMainExperience()
+    }
+
+    /// Present the one-time first-run flow. On completion the coordinator has already marked the
+    /// flag; we tear down the window and run `completion` to start the main experience.
+    private func presentOnboarding(completion: @escaping () -> Void) {
+        let coordinator = OnboardingCoordinator(
+            northStar: appState.northStar,
+            capture: appState.capture,
+            planner: appState.planner,
+            googleCalendar: appState.googleCalendar,
+            settings: appState.settings,
+            auth: appState.auth,
+            notifications: NotificationAuthorizer(),
+            onFinish: { [weak self] in
+                guard let self else { return }
+                self.onboardingWindow?.orderOut(nil)
+                self.onboardingWindow = nil
+                completion()
+            }
+        )
+        let window = OnboardingWindow(coordinator: coordinator)
+        coordinator.hostWindow = window   // OAuth presentation anchor
+        self.onboardingWindow = window
+        window.present()
     }
 
     private func startMainExperience() {
@@ -311,6 +362,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.onMascotVisibilityChanged = { [weak self] visible in
             if visible { self?.mascot?.show() } else { self?.mascot?.hide() }
         }
+
+        // Voice ("talk to Togi"): output → agent → session, all booking through the shared
+        // CalendarRouter. The agent's infer closure adapts the app's InferenceClient (which also
+        // needs a maxTokens) down to (system, messages); 300 tokens is plenty for one short action.
+        let voiceOutput = VoiceOutput(settings: appState.settings)
+        let inference = appState.inference
+        let voiceAgent = VoiceCommandAgent(infer: { system, messages in
+            try await inference.infer(system: system, messages: messages, maxTokens: 300)
+        })
+        let voice = VoiceSession(voice: voiceOutput, agent: voiceAgent, calendar: appState.calendar)
+        appState.voice = voice
+        // Push the live aura into the mascot. `level` is Float and voiceLevel is Float — no cast.
+        // There's no `active` publisher; derive it from phase (anything but .idle is "active").
+        voice.$level
+            .receive(on: RunLoop.main)
+            .sink { [weak mascot] lvl in mascot?.viewModel.voiceLevel = lvl }
+            .store(in: &voiceCancellables)
+        voice.$phase
+            .map { $0 != .idle }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak mascot] active in mascot?.viewModel.voiceActive = active }
+            .store(in: &voiceCancellables)
+        // Global "tap Control to talk": toggles a hands-free voice conversation; Escape cancels.
+        let hotkey = VoiceHotkeyMonitor()
+        hotkey.onToggle = { [weak voice] in voice?.toggleConversation() }
+        hotkey.onEscape = { [weak voice] in voice?.cancel() }
+        hotkey.start()
+        self.voiceHotkey = hotkey
 
         // Wire the agent's action tools to app-only side effects: calendar writes, nudges,
         // and persisting the segments the agent produced from recent activity.
@@ -355,6 +435,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Launch the sidecar once a fresh auth token is available.
         Task { await self.appState.startSidecar() }
+
+        // Best-effort: pull/reconcile the North Star from the account (no-op when signed out).
+        Task { await self.appState.northStar.refresh() }
 
         let coordinator = JudgeCoordinator(
             observations: appState.observations,
@@ -487,7 +570,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onHeightChange: reportHeight,
                 onSettings: { AppDelegate.openSettings() },
                 onClose: { [weak self] in self?.companion?.orderOut(nil) },
-                seedMessages: seed
+                seedMessages: seed,
+                voice: state.voice
             )
             .environmentObject(state)
         }
