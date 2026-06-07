@@ -21,6 +21,11 @@
     <!-- Menu-bar app: no Dock icon, no default window. -->
     <key>LSUIElement</key>             <true/>
 
+    <!-- Single instance: declarative first layer (Launch Services). The real guarantee
+         is the flock-based SingleInstanceGuard, which also covers `open -n`, copies in
+         other folders, and simultaneous launches this key can miss. -->
+    <key>LSMultipleInstancesProhibited</key> <true/>
+
     <!-- Permission prompts. -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Togi reads your calendar to know what you planned, so it can compare plan vs reality.</string>
