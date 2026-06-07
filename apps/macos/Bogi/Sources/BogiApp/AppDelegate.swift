@@ -176,9 +176,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var gateHosting: NSHostingController<GateView>?
     private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
     private var gateObservation: AnyCancellable?
+    private var surfaceObserver: NSObjectProtocol?
     private var mainExperienceStarted = false
 
     override init() {
+        // Enforce a single running Togi before touching any shared resource (DB, sidecar).
+        // A duplicate launch surfaces the existing instance and quits itself.
+        if !SingleInstanceGuard.isTestOrDemoEnvironment(), !SingleInstanceGuard.acquire() {
+            SingleInstanceGuard.surfaceExistingInstanceAndExit()  // never returns
+        }
+
         let db: DatabaseService
         let path = DatabaseService.defaultPath()
         var dbPath = path
@@ -402,6 +409,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         scheduler.start()
         calmScheduler = scheduler
+
+        // When a user accidentally launches a second Togi, that duplicate posts this
+        // notification (then quits). Surface the companion so it's clear Togi is running.
+        surfaceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: SingleInstanceGuard.surfaceNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showCompanion() }
+        }
     }
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
