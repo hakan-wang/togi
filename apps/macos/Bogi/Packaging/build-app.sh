@@ -3,7 +3,9 @@
 #
 # GATED on an Apple Developer ID: set DEVELOPER_ID (e.g. "Developer ID Application: Name (TEAMID)")
 # and notarization creds (NOTARY_PROFILE from `xcrun notarytool store-credentials`).
-# Without them, the script still builds + assembles the unsigned .app for local testing.
+# Without DEVELOPER_ID the script refuses to build unless you pass ALLOW_UNSIGNED=1, which
+# produces an unsigned .app for LOCAL testing only — never distribute it (see the keychain
+# note at the unsigned branch below).
 set -euo pipefail
 cd "$(dirname "$0")/.."          # apps/macos/Bogi
 # User-facing product name. The on-disk bundle name and DMG volume name are what
@@ -156,8 +158,21 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
     echo "NOTARY_PROFILE unset — skipping DMG notarization."
   fi
 else
+  # An UNSIGNED build is dangerous to distribute: because each unsigned binary has a
+  # different (ad-hoc) code-signing identity, macOS can't match it to the identity that
+  # created the app's Keychain items, so end users get the recurring "Togi wants to use
+  # confidential information stored in your keychain" prompt (plus Gatekeeper warnings).
+  # A signed+notarized build creates and reads its own items under one stable Developer ID
+  # identity and never prompts. So refuse to build unsigned unless explicitly opted in for
+  # local testing — this makes an accidental unsigned RELEASE impossible.
+  if [ "${ALLOW_UNSIGNED:-}" != "1" ]; then
+    echo "ERROR: DEVELOPER_ID is unset." >&2
+    echo "  For a RELEASE: export DEVELOPER_ID (and NOTARY_PROFILE) and re-run." >&2
+    echo "  For LOCAL testing only: re-run with ALLOW_UNSIGNED=1 (do NOT distribute the result)." >&2
+    exit 1
+  fi
   create_dmg
-  echo "DEVELOPER_ID unset — built UNSIGNED $APP and $DMG for local testing only."
+  echo "DEVELOPER_ID unset — built UNSIGNED $APP and $DMG for local testing only (ALLOW_UNSIGNED=1)."
 fi
 echo "done: $APP"
 echo "done: $DMG"

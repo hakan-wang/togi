@@ -35,6 +35,10 @@ require 'codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"' "DMG must b
 require 'xcrun notarytool submit "$DMG"' "DMG must be notarized"
 require 'xcrun stapler staple "$DMG"' "DMG must be stapled"
 
+# An unsigned build must never ship: it triggers the recurring Keychain prompt + Gatekeeper
+# warnings for end users. The unsigned path must require an explicit ALLOW_UNSIGNED=1 opt-in.
+require 'if [ "${ALLOW_UNSIGNED:-}" != "1" ]; then' "unsigned build must be gated behind ALLOW_UNSIGNED=1 so releases can't ship unsigned"
+
 # Resource bundles must live in Contents/Resources ONLY. A nested bundle in Contents/MacOS
 # makes `codesign --deep` reject the app, and the runtime no longer needs it there.
 refute 'cp -R "$bundle" "$APP/Contents/MacOS/"' "resource bundles must NOT be copied into Contents/MacOS"
