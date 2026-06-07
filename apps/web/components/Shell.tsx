@@ -6,7 +6,7 @@
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { DOMAINS, DAY_START, DAY_END, Domain, JUST_ENDED, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
+import { DOMAINS, DAY_START, DAY_END, Domain, JUST_ENDED, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt, hm } from "../lib/data";
 import { dayKey, nowMinutes, onDay } from "../lib/dates";
 import { loadFacts } from "../lib/userFacts";
 import { transcribeAudio, categorizeText } from "../lib/capture";
@@ -81,6 +81,28 @@ function planAtCtx(b?: any): CapContext {
 }
 function planCtx(): CapContext { return planAtCtx(); }
 
+// A few populated recent days (Thu/Fri/Sat) so navigating back isn't empty.
+function buildHistory(): { plan: PlanBlock[]; real: RealEntry[] } {
+  const plan: PlanBlock[] = []; const real: RealEntry[] = [];
+  const tmpl = [
+    { domain: "Health" as Domain, activity: "Gym", title: "Morning run", start: hm(7, 30), end: hm(8, 15) },
+    { domain: "Work" as Domain, activity: "Editing", project: "Litro", title: "Edit launch vlog", start: hm(9, 0), end: hm(11, 0) },
+    { domain: "Work" as Domain, activity: "Email", project: "Litro", title: "Email suppliers", start: hm(11, 0), end: hm(11, 45) },
+    { domain: "Errands & life admin" as Domain, activity: "Errands", title: "Groceries", start: hm(15, 0), end: hm(16, 0) },
+    { domain: "Social" as Domain, activity: "Hanging out", title: "Dinner with friends", start: hm(19, 0), end: hm(21, 0) },
+  ];
+  for (let off = -3; off <= -1; off++) {
+    const d = new Date(); d.setDate(d.getDate() + off); const key = dayKey(d);
+    tmpl.forEach((t, i) => {
+      const pid = `h-${key}-${i}`;
+      plan.push({ id: pid, date: key, domain: t.domain, project: (t as any).project || null, activity: t.activity, title: t.title, start: t.start, end: t.end });
+      if (i === 1 && off !== -2) real.push({ id: `hr-${key}-${i}`, date: key, slot: pid, domain: "Distraction", activity: "Scrolling", title: "Fell into TikTok", note: "Lost ~1h", match: false });
+      else real.push({ id: `hr-${key}-${i}`, date: key, slot: pid, domain: t.domain, project: (t as any).project || null, activity: t.activity, title: t.title, match: true });
+    });
+  }
+  return { plan, real };
+}
+
 export function TogiAppB() {
   const [tab, setTab] = useState("today");
   const [view, setView] = useState("real");
@@ -109,6 +131,7 @@ export function TogiAppB() {
     (async () => {
       try { setVocab(await loadVocabulary()); } catch { /* keep starter */ }
       try { const pl = loadPlanLocal(); if (pl.length) setPlan((cur) => { const ids = new Set(cur.map((x) => x.id)); return [...cur, ...pl.filter((x) => !ids.has(x.id))]; }); } catch { /* ignore */ }
+      try { const h = buildHistory(); setPlan((cur) => { const ids = new Set(cur.map((x) => x.id)); return [...cur, ...h.plan.filter((x) => !ids.has(x.id))]; }); setReal((cur) => { const ids = new Set(cur.map((x) => x.id)); return [...cur, ...h.real.filter((x) => !ids.has(x.id))]; }); } catch { /* ignore */ }
       try {
         const rows = await loadRealEntries();
         if (rows.length) {
@@ -315,7 +338,11 @@ export function TogiAppB() {
   const today = dayKey();
   const isToday = selectedDate === today;
   const planForDay = plan.filter((b) => onDay(b, selectedDate, today));
-  const realForDay = real.filter((b) => onDay(b, selectedDate, today));
+  const realForDay = real.filter((b) => onDay(b, selectedDate, today)).filter((b) => {
+    if (selectedDate !== today) return true; // past days: show what actually happened
+    const end = b.slot ? (plan.find((p) => p.id === b.slot)?.end ?? b.end) : b.end;
+    return b.live || (end != null && end <= nowMin); // today: only blocks that have already ended (or live check-ins)
+  });
 
   // Real-time check-in: the most-recently-ended plan block TODAY, not yet logged.
   // (A 2-min check-in falls out the end of every block — nothing shows until one ends.)

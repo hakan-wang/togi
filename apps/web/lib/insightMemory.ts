@@ -15,6 +15,7 @@ export interface InsightRecord {
   confidence: number;
   evidence_count: number;
   status: "candidate" | "active" | "fading" | "retired";
+  applied?: boolean; // user pressed "Apply to planning" → Togi leans on it harder when planning
   first_seen: string;
   last_confirmed: string;
 }
@@ -41,6 +42,12 @@ export function surfaced(rows: InsightRecord[]): InsightRecord[] {
 
 export function dismiss(id: string): InsightRecord[] {
   const rows = load().map((r) => (r.id === id ? { ...r, status: "retired" as const } : r));
+  save(rows); return rows;
+}
+
+/** User confirms this insight should steer planning → keep it active + flag it applied. */
+export function applyToPlanning(id: string): InsightRecord[] {
+  const rows = load().map((r) => (r.id === id ? { ...r, applied: true, status: "active" as const, confidence: Math.max(r.confidence, 0.8) } : r));
   save(rows); return rows;
 }
 

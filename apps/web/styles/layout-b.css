@@ -307,6 +307,11 @@
 .pattern-apply:hover { background: var(--togi-ink); color: #fff; border-color: var(--togi-ink); }
 .pattern-apply.on { background: var(--cat-health-t); border-color: color-mix(in srgb, var(--cat-health) 40%, transparent); color: var(--cat-health); cursor: default; }
 .pattern-apply.on:hover { background: var(--cat-health-t); color: var(--cat-health); }
+.pattern-sugg { font-size: 12px; line-height: 1.45; color: var(--togi-muted); margin: -6px 0 14px; font-style: italic; }
+.pattern-actions { display: flex; gap: 8px; align-items: center; align-self: stretch; }
+.pattern-apply.applied, .pattern-apply.applied:hover { background: var(--cat-health-t); border-color: color-mix(in srgb, var(--cat-health) 40%, transparent); color: var(--cat-health); cursor: default; }
+.pattern-dismiss { background: transparent; border: 1px solid var(--togi-line); color: var(--togi-muted); border-radius: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all .14s ease; white-space: nowrap; }
+.pattern-dismiss:hover { border-color: color-mix(in srgb, var(--cat-scroll) 45%, transparent); color: var(--cat-scroll); background: var(--cat-scroll-t); }
 .bank-section-label { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--togi-muted); font-weight: 700; margin: 0 2px 14px; }
 
 /* ---------------------------------------------------------- Planned but not done */

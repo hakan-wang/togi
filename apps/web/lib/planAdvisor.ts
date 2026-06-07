@@ -47,6 +47,10 @@ export function advisePlan(block: PlanBlock, memory: InsightRecord[]): PlanAdvic
     }
   }
 
+  // 3) CONTRADICTION heads-up — memory flags this activity even if we didn't move it
+  const warn = memory.find((m) => ["drift", "follow_through", "distraction"].includes(m.family) && mentions(m.statement, act) && !used.includes(m.id));
+  if (warn) { reasons.push(`heads-up — your memory says ${act.toLowerCase()} often slips, so I’ll check in on it`); used.push(warn.id); }
+
   const reason = reasons.length ? reasons.join(", and ") : null;
   return { block: b, reason, usedInsightIds: used };
 }

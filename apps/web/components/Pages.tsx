@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { CATEGORIES, DOMAINS, SHORT_TERM_INSIGHTS } from "../lib/data";
 import { IcArrow, IcCheck, IcClose, IcMic, IcSpark, IcPlus } from "./icons";
 import { computeStats, seedHistory } from "../lib/behavior";
-import { dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
+import { applyToPlanning, dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
 
 const FAMILY_COLOR: Record<string, string> = {
   drift: "var(--cat-creative)", estimation: "var(--cat-errands)", distraction: "var(--cat-scroll)",
@@ -51,16 +51,23 @@ export function InsightsPage({ onOpenSession }: any) {
       </div>
       <div className="pattern-grid">
         {(insights.length
-          ? insights.map((i) => ({ id: i.id, color: FAMILY_COLOR[i.family] || "var(--cat-deepwork)", metric: i.metric || i.family, statement: i.statement, suggestion: i.suggestion, dismissable: true }))
-          : SHORT_TERM_INSIGHTS.map((p) => ({ id: p.id, color: DOMAINS[p.domain].color, metric: p.metric, statement: p.text, suggestion: undefined as string | undefined, dismissable: false }))
+          ? insights.map((i) => ({ id: i.id, color: FAMILY_COLOR[i.family] || "var(--cat-deepwork)", metric: i.metric || i.family, statement: i.statement, suggestion: i.suggestion, dismissable: true, applied: !!i.applied }))
+          : SHORT_TERM_INSIGHTS.map((p) => ({ id: p.id, color: DOMAINS[p.domain].color, metric: p.metric, statement: p.text, suggestion: undefined as string | undefined, dismissable: false, applied: false }))
         ).map((c) => (
           <div className="pattern-card" key={c.id} style={{ ["--c" as any]: c.color }}>
-            <div className="pattern-metric" style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
-              <span className="pattern-dot" style={{ background: c.color }} />{c.metric}
-              {c.dismissable && <button className="ib-x" title="Not true — forget this" style={{ marginLeft: "auto" }} onClick={() => setInsights(surfaced(dismiss(c.id)))}><IcClose size={12} /></button>}
-            </div>
+            <div className="pattern-metric"><span className="pattern-dot" style={{ background: c.color }} />{c.metric}</div>
             <p className="pattern-text">{c.statement}</p>
-            <button className="pattern-apply" onClick={() => onOpenSession("plan")}>{c.suggestion || "Apply to planning"} <IcArrow size={14} /></button>
+            {c.suggestion && <p className="pattern-sugg">{c.suggestion}</p>}
+            {c.dismissable ? (
+              <div className="pattern-actions">
+                <button className={"pattern-apply" + (c.applied ? " applied" : "")} disabled={c.applied} onClick={() => setInsights(surfaced(applyToPlanning(c.id)))}>
+                  {c.applied ? <><IcCheck size={14} /> In memory</> : <>Apply to planning <IcArrow size={14} /></>}
+                </button>
+                <button className="pattern-dismiss" title="Not true / I've changed" onClick={() => setInsights(surfaced(dismiss(c.id)))}>Not true</button>
+              </div>
+            ) : (
+              <button className="pattern-apply" onClick={() => onOpenSession("plan")}>Apply to planning <IcArrow size={14} /></button>
+            )}
           </div>
         ))}
       </div>
