@@ -13,7 +13,10 @@ beforeAll(() => {
       confidence REAL, judged_at TEXT);
     CREATE TABLE planned_blocks (id TEXT PRIMARY KEY, source TEXT, external_event_id TEXT, title TEXT,
       start_at TEXT, end_at TEXT, cat TEXT, goal_id TEXT, status TEXT, created_by_bogi INTEGER, updated_at TEXT);
-    CREATE TABLE goals (id TEXT PRIMARY KEY, title TEXT, period TEXT, target TEXT, created_at TEXT);
+    CREATE TABLE goals (id TEXT PRIMARY KEY, title TEXT, period TEXT, target TEXT, created_at TEXT,
+      why TEXT, status TEXT, cat TEXT, updated_at TEXT);
+    CREATE TABLE journal (id TEXT PRIMARY KEY, created_at TEXT, kind TEXT, goal_id TEXT, cat TEXT,
+      title TEXT, desc TEXT, confidence REAL, evidence TEXT, status TEXT);
     CREATE TABLE activity_observations (id TEXT PRIMARY KEY, captured_at DATETIME NOT NULL,
       active_app TEXT, active_app_bundle_id TEXT, active_window_title TEXT, text TEXT,
       content_hash TEXT, capture_method TEXT NOT NULL DEFAULT 'ax',
@@ -32,7 +35,12 @@ beforeAll(() => {
     INSERT INTO segment_fts VALUES
       ('s1','Editing video pipeline'),('s2','Scrolling X'),('s3','Editing video pipeline'),
       ('s4','Refactoring readTools');
-    INSERT INTO goals VALUES ('g1','Ship Bogi','quarter','beta by July','2026-05-01T00:00:00Z');
+    INSERT INTO goals (id,title,period,target,created_at,why,status,cat) VALUES
+      ('g1','Ship Bogi','quarter','beta by July','2026-05-01T00:00:00Z','love it','active','deepwork'),
+      ('g2','Old goal','month',NULL,'2026-04-01T00:00:00Z',NULL,'done',NULL);
+    INSERT INTO journal (id,created_at,kind,goal_id,cat,title,desc,confidence,evidence,status) VALUES
+      ('j1','2026-06-05T20:00:00Z','insight',NULL,NULL,'Loses focus ~35m into editing','dips after 35m',0.7,NULL,'active'),
+      ('j2','2026-06-06T20:00:00Z','progress','g1',NULL,'Shipped the migration',NULL,NULL,NULL,'active');
     -- 2026-06-06 has NO segments, only raw observations (space-format), to exercise the
     -- raw fallback: 4 observations in cmux, 1 in Safari.
     INSERT INTO activity_observations (id, captured_at, active_app, active_window_title, text, focused) VALUES
@@ -165,4 +173,35 @@ test("list_events filters by range", async () => {
   const out = JSON.parse(await tools.find((t) => t.name === "list_events")!.invoke({ start: "2026-06-06", end: "2026-06-06" }));
   expect(out.events.length).toBe(1);
   expect(out.events[0].title).toBe("Gym");
+});
+
+test("list_goals returns active goals with fields by default", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const out = JSON.parse(await tools.find((t) => t.name === "list_goals")!.invoke({}));
+  expect(out.goals.length).toBe(1);
+  expect(out.goals[0].title).toBe("Ship Bogi");
+  expect(out.goals[0].status).toBe("active");
+  expect(out.goals[0].why).toBe("love it");
+});
+
+test("list_goals includeAll returns done goals too", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const out = JSON.parse(await tools.find((t) => t.name === "list_goals")!.invoke({ includeAll: true }));
+  expect(out.goals.length).toBe(2);
+});
+
+test("list_journal filters by kind and goal_id", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const lj = tools.find((t) => t.name === "list_journal")!;
+  const insights = JSON.parse(await lj.invoke({ kind: "insight" }));
+  expect(insights.entries.map((e: any) => e.id)).toEqual(["j1"]);
+  const forGoal = JSON.parse(await lj.invoke({ goal_id: "g1" }));
+  expect(forGoal.entries.map((e: any) => e.id)).toEqual(["j2"]);
+});
+
+test("summarize_range includes recentInsights", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const out = JSON.parse(await tools.find((t) => t.name === "summarize_range")!.invoke({ start: "2026-06-01T00:00:00Z", end: "2026-06-02T23:59:59Z" }));
+  expect(Array.isArray(out.recentInsights)).toBe(true);
+  expect(out.recentInsights.some((i: any) => i.title.includes("Loses focus"))).toBe(true);
 });
