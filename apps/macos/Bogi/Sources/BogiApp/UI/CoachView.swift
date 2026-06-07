@@ -19,6 +19,9 @@ struct CoachView: View {
     /// Pre-seeded transcript, used only by previews and the screenshot demo hook. Empty in
     /// the real app, where the conversation always starts fresh.
     var seedMessages: [(role: String, text: String)] = []
+    /// Hands-free voice scheduling. Injected by the host; nil in previews/demo, where the mic
+    /// button and the voice strip are simply hidden.
+    var voice: VoiceSession? = nil
 
     @State private var messages: [(role: String, text: String)] = []
     @State private var input: String = ""
@@ -33,6 +36,7 @@ struct CoachView: View {
     var body: some View {
         VStack(spacing: 10) {
             composer
+            if let voice { VoiceStrip(voice: voice) }
             if messages.isEmpty {
                 if !suggestions.isEmpty { openers }
             } else {
@@ -79,6 +83,7 @@ struct CoachView: View {
                     .onSubmit(submit)
                     .disabled(sending)
 
+                if let voice { VoiceMicButton(voice: voice, disabled: sending) }
                 sendButton
             }
             .padding(.leading, 14)
