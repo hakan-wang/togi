@@ -137,10 +137,19 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
   # and native .node addons, but also plain executables shipped inside node_modules
   # (e.g. esbuild's bin/esbuild, @esbuild/darwin-arm64/bin/esbuild) which have no .node
   # extension — notarization rejects ANY unsigned Mach-O, hardened-runtime-less binary.
+  # The Node runtime JIT-compiles (V8), which the hardened runtime KILLS unless `node` carries
+  # the JIT entitlements (see Sidecar.entitlements). Without them the sidecar dies the instant
+  # it compiles code and the app reports "the agent isn't running". Only the `node` executable
+  # needs them (entitlements on the loaded .node addons are ignored); everything else signs plain.
   find "$SIDECAR_DST" -type f -print0 | \
     while IFS= read -r -d '' f; do
       if file -b "$f" | grep -q "Mach-O"; then
-        codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
+        if [ "$f" = "$SIDECAR_DST/node" ]; then
+          codesign --force --options runtime --timestamp \
+            --entitlements "$PKG/Sidecar.entitlements" --sign "$DEVELOPER_ID" "$f"
+        else
+          codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
+        fi
       fi
     done
 
