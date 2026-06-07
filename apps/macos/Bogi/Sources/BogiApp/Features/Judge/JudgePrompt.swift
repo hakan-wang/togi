@@ -7,6 +7,8 @@ struct JudgeInput {
     var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
     var activeEvents: [(title: String, cat: String?, startAt: Date, endAt: Date)] = []
+    var activeGoals: [(id: String, title: String, status: String, cat: String?)] = []
+    var dueCheckIns: [(eventId: String, goalId: String?, title: String)] = []
 }
 
 /// Builds the user payload for the activity judge tick. Pure string construction so the
@@ -53,6 +55,22 @@ enum JudgePrompt {
                                         "start_at": iso.string(from: e.startAt),
                                         "end_at": iso.string(from: e.endAt)]
                 if let cat = e.cat { o["cat"] = cat }
+                return o
+            }
+        }
+
+        if !input.activeGoals.isEmpty {
+            root["active_goals"] = input.activeGoals.map { g -> [String: Any] in
+                var o: [String: Any] = ["id": g.id, "title": g.title, "status": g.status]
+                if let cat = g.cat { o["cat"] = cat }
+                return o
+            }
+        }
+
+        if !input.dueCheckIns.isEmpty {
+            root["due_check_ins"] = input.dueCheckIns.map { c -> [String: Any] in
+                var o: [String: Any] = ["event_id": c.eventId, "title": c.title]
+                if let goalId = c.goalId { o["goal_id"] = goalId }
                 return o
             }
         }
