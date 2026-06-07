@@ -40,7 +40,7 @@
 
     <!-- Sparkle auto-update (fill in before release). -->
     <key>SUFeedURL</key>     <string>https://updates.bogi.sh/appcast.xml</string>
-    <key>SUPublicEDKey</key> <string>REPLACE_WITH_SPARKLE_ED25519_PUBLIC_KEY</string>
+    <key>SUPublicEDKey</key> <string>YudtczhHM5S1Af9BXxYEG4YcuwmzFBsKIr+sDTg3X9k=</string>
     <key>SUEnableAutomaticChecks</key> <true/>
 </dict>
 </plist>
