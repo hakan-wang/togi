@@ -15,6 +15,9 @@ final class AppState: ObservableObject {
 
     let observations: ObservationStore
     let segments: SegmentStore
+    let categories: CategoryRepository
+    let userEvents: UserEventRepository
+    let journal: JournalRepository
     let plannedBlocks: PlannedBlockRepository
     let planner: PlannerService
     let eventKit: EventKitService
@@ -22,6 +25,7 @@ final class AppState: ObservableObject {
     let search: SearchService
     let goals: GoalsService
     let insights: InsightsService
+    let dashboardFeed: DashboardFeedService
     let sidecar: SidecarClient
     private let sidecarTransport: ProcessSidecarTransport
     let coach: CoachService
@@ -110,6 +114,9 @@ final class AppState: ObservableObject {
         let plannedBlocks = PlannedBlockRepository(database: database)
         self.observations = ObservationStore(database: database)
         self.segments = SegmentStore(database: database)
+        self.categories = CategoryRepository(database: database)
+        self.userEvents = UserEventRepository(database: database)
+        self.journal = JournalRepository(database: database)
         self.plannedBlocks = plannedBlocks
         self.eventKit = EventKitService()
         self.googleCalendar = GoogleCalendarService()
@@ -124,6 +131,7 @@ final class AppState: ObservableObject {
         let insights = InsightsService(database: database)
         self.goals = goals
         self.insights = insights
+        self.dashboardFeed = DashboardFeedService(journal: self.journal, goals: goals, events: self.userEvents)
 
         // On-device agent sidecar (bundled Node + LangChain.js). Coach, Planner, and the
         // nudge path all route through it; raw data never leaves the device.
@@ -411,6 +419,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let presenter = self.presenter
         let segmentStore = appState.segments
         let search = appState.search
+        let categories = appState.categories
+        let userEvents = appState.userEvents
+        let settings = appState.settings
+        let goals = appState.goals
+        let journal = appState.journal
         let actions = SidecarActionHandlers(
             createBlock: { title, start, end in
                 await MainActor.run {
@@ -429,15 +442,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.applyNudge(decision, onTask: false)
                 }
             },
+            manageCategories: { op, args in
+                await MainActor.run {
+                    switch op {
+                    case "add":
+                        guard let name = args["name"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return categories.add(name: name, color: args["color"] as? String, description: args["description"] as? String) != nil
+                            ? ["ok": true] : ["ok": false, "error": "exists_or_bad"]
+                    case "rename":
+                        guard let id = args["id"] as? String, let name = args["name"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.rename(id: id, name: name)]
+                    case "recolor":
+                        guard let id = args["id"] as? String, let color = args["color"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.recolor(id: id, color: color)]
+                    case "merge":
+                        guard let from = args["from"] as? String, let into = args["into"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.merge(from: from, into: into)]
+                    default:
+                        return ["ok": false, "error": "unknown_op"]
+                    }
+                }
+            },
+            writeBehaviour: { text in
+                await MainActor.run { settings.set("behaviour_profile", text) }
+            },
+            categoryExists: { id in
+                await MainActor.run { categories.exists(id) }
+            },
             recordSegments: { segs in
                 await MainActor.run {
                     segs.forEach {
                         segmentStore.insert($0)
-                        let desc = [$0.category, $0.subCategory, $0.subSub].compactMap { $0 }.joined(separator: " — ")
+                        let desc = [$0.cat, $0.sub, $0.title].compactMap { $0 }.joined(separator: " — ")
                         if !desc.isEmpty { search.indexSegment(id: $0.id, description: desc) }
                     }
                     return segs.count
                 }
+            },
+            addEvent: { event in
+                await MainActor.run { userEvents.insert(event); return event.id }
+            },
+            manageGoal: { op, args in
+                await MainActor.run {
+                    switch op {
+                    case "add":
+                        guard let title = args["title"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        let g = goals.add(title: title, period: (args["period"] as? String) ?? "custom",
+                                          target: args["target"] as? String, why: args["why"] as? String,
+                                          cat: args["cat"] as? String)
+                        return ["ok": true, "id": g.id]
+                    case "update":
+                        guard let id = args["id"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        let ok = goals.update(id: id, status: args["status"] as? String, why: args["why"] as? String,
+                                              target: args["target"] as? String, cat: args["cat"] as? String)
+                        return ["ok": ok]
+                    default:
+                        return ["ok": false, "error": "unknown_op"]
+                    }
+                }
+            },
+            logJournal: { entry in
+                await MainActor.run { journal.insert(entry); return entry.id }
+            },
+            setJournalStatus: { id, status in
+                await MainActor.run { journal.setStatus(id: id, status: status); return true }
+            },
+            goalExists: { id in
+                await MainActor.run { goals.exists(id) }
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 
@@ -456,7 +527,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             observations: appState.observations,
             blocks: appState.plannedBlocks,
             segments: appState.segments,
-            sidecar: appState.sidecar
+            sidecar: appState.sidecar,
+            events: userEvents,
+            goals: appState.goals
         )
         coordinator.start()
         self.coordinator = coordinator
@@ -581,6 +654,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CompanionView(
                 insight: { period in state.insights.insight(for: period, containing: Date()) },
                 ask: { question, onToken in try await state.coach.ask(question, onToken: onToken) },
+                insightCards: { state.dashboardFeed.insightCards() },
+                goalCards: { state.dashboardFeed.goalCards() },
                 suggest: {
                     CoachService.buildSuggestions(
                         insight: state.insights.insight(for: .day, containing: Date()),
