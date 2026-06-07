@@ -24,9 +24,9 @@ final class MascotPanel: NSPanel {
     init(viewModel: MascotViewModel? = nil) {
         self.viewModel = viewModel ?? MascotViewModel()
         super.init(
-            // Wide/tall enough that a multi-line nudge bubble (maxWidth 200) wraps and the
-            // mascot's mood glow sits within the transparent panel without clipping.
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 210),
+            // Square and roomy so the voice aura can bloom past the axolotl without being
+            // clipped, and a multi-line nudge bubble (maxWidth 200) still wraps cleanly.
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 220),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -36,9 +36,7 @@ final class MascotPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false                   // no boxy window-shadow ring around the mascot
-        // The mascot view drives repositioning itself (so it can tell a drag from a click);
-        // leaving window-background move on would fight that and double-move the panel.
-        isMovableByWindowBackground = false
+        isMovableByWindowBackground = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // Route the view's tap through this panel's `onActivate` so the owner can swap
@@ -46,7 +44,11 @@ final class MascotPanel: NSPanel {
         let root = MascotView(viewModel: self.viewModel, onActivate: { [weak self] in
             self?.onActivate?()
         })
-        contentView = NSHostingView(rootView: root)
+        let host = NSHostingView(rootView: root)
+        host.wantsLayer = true
+        host.layer?.masksToBounds = false   // let the voice aura glow past the content box
+        host.clipsToBounds = false
+        contentView = host
     }
 
     func show() {
