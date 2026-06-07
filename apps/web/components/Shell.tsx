@@ -249,9 +249,18 @@ export function TogiAppB() {
     // or whichever planned block its time falls within. Only true gaps stay off-plan.
     let slot = ctx.planId || null;
     if (!slot) {
-      const t = ctx.start ?? nowMinutes();
-      const within = plan.find((p) => (p.date || dayKey()) === selectedDate && t >= p.start && t < p.end);
-      if (within) slot = within.id;
+      const onSel = (p: PlanBlock) => (p.date || dayKey()) === selectedDate;
+      if (ctx.start != null) {
+        // a specific tapped time → the block that time falls within (else a true gap)
+        slot = plan.find((p) => onSel(p) && ctx.start! >= p.start && ctx.start! < p.end)?.id || null;
+      } else {
+        // a generic "now" check-in → the block Togi is WAITING on (just ended, not logged),
+        // else the block currently in progress.
+        const liveSlots = new Set(real.filter((r) => r.live && r.slot).map((r) => r.slot));
+        const due = plan.filter((p) => onSel(p) && p.end <= nowMin && !liveSlots.has(p.id)).sort((a, b) => b.end - a.end)[0];
+        const t = nowMinutes();
+        slot = due?.id || plan.find((p) => onSel(p) && t >= p.start && t < p.end)?.id || null;
+      }
     }
     const entry = placeLive({
       id: `live-${Date.now()}`, slot: slot || undefined, off: !slot, match: r.matched,
