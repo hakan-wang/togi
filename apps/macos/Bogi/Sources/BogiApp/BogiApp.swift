@@ -13,11 +13,7 @@ struct BogiApp: App {
             MenuBarContent()
                 .environmentObject(appDelegate.appState)
         } label: {
-            BogiAsset.mascot
-                .renderingMode(.original)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 18, height: 18)
+            Image(nsImage: MenuBarIcon.image)
                 .accessibilityLabel("Togi")
         }
 
