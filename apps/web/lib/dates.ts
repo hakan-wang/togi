@@ -31,6 +31,12 @@ export function dayLabel(key?: string): string {
   return dt.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
 
+/** Build an ISO timestamp for a given day key + minutes-of-day (local). */
+export function isoFromDayMin(dayK: string, minutes: number): string {
+  const [y, m, d] = dayK.split("-").map(Number);
+  return new Date(y, m - 1, d, Math.floor(minutes / 60), minutes % 60, 0, 0).toISOString();
+}
+
 /** Does a block belong to the given day? Undated seed blocks count as "today". */
 export function onDay(block: { date?: string }, key: string, todayK: string): boolean {
   return (block.date || todayK) === key;

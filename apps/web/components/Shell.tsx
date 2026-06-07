@@ -7,7 +7,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { DOMAINS, DAY_START, DAY_END, Domain, JUST_ENDED, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt, hm } from "../lib/data";
-import { dayKey, nowMinutes, onDay } from "../lib/dates";
+import { dayKey, nowMinutes, onDay, isoFromDayMin } from "../lib/dates";
 import { loadFacts } from "../lib/userFacts";
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
@@ -207,16 +207,16 @@ export function TogiAppB() {
   // inline "Togi listening" popover. (The big card is only for the + button / Plan.)
   const buildCtx = (target: any): CapContext => {
     const todayK = dayKey();
-    const futureSel = selectedDate > todayK;
     if (target.block) {
       const b = target.block;
-      const future = futureSel || (selectedDate === todayK && (b.start ?? 0) > nowMin);
-      return view === "plan" || future ? planAtCtx(b) : blockCtx(b);
+      const past = selectedDate < todayK || (selectedDate === todayK && (b.end ?? b.start ?? 0) <= nowMin);
+      return past ? blockCtx(b) : planAtCtx(b);  // past = check-in, future = plan (toggle is just a view)
     }
     const start = target.range ? target.range[0] : target.point;
     const end = target.range ? target.range[1] : undefined;
     const label = target.range ? `${fmt(target.range[0])}–${fmt(target.range[1])}` : `around ${fmt(target.point)}`;
-    if (view === "plan" || futureSel) return { ...planCtx(), start, end };
+    const past = selectedDate < todayK || (selectedDate === todayK && start <= nowMin);
+    if (!past) return { ...planCtx(), start, end };
     return { ...selfCtx(label), start, end };
   };
   const onVoice = (ctx: CapContext, input: CheckinInput) => (ctx.kind === "plan" ? handlePlan(ctx, input) : handleCapture(ctx, input));
@@ -245,9 +245,14 @@ export function TogiAppB() {
     const r = await categorizeText(utterance, { block: ctx.title, planId: ctx.planId, window: ctx.window, kind: ctx.kind }, vocab);
     if (!isAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
 
-    // A block check-in ALWAYS fills that block's slot (so reality sits over the plan,
-    // showing the gap) — even if you did something else. match = did it match the plan.
-    const slot = ctx.planId || null;
+    // A check-in glues to the plan block it belongs to: either the block it came from,
+    // or whichever planned block its time falls within. Only true gaps stay off-plan.
+    let slot = ctx.planId || null;
+    if (!slot) {
+      const t = ctx.start ?? nowMinutes();
+      const within = plan.find((p) => (p.date || dayKey()) === selectedDate && t >= p.start && t < p.end);
+      if (within) slot = within.id;
+    }
     const entry = placeLive({
       id: `live-${Date.now()}`, slot: slot || undefined, off: !slot, match: r.matched,
       domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note, confidence: r.confidence, live: true,
@@ -260,7 +265,8 @@ export function TogiAppB() {
     if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
     if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
 
-    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: r.durationMin, matched_plan_id: slot, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: null });
+    const durMin = entry.start != null && entry.end != null ? entry.end - entry.start : r.durationMin ?? null;
+    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: durMin, matched_plan_id: slot, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: entry.start != null ? isoFromDayMin(selectedDate, entry.start) : null });
     logged(`Logged: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity}`);
     return { status: "done" };
   }

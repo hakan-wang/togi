@@ -5,9 +5,10 @@
    Supabase schema lives in CONNECTING.md (real_entries + projects + activities).
    ============================================================ */
 import { Domain, PlanBlock, RealEntry, STARTER_ACTIVITIES } from "./data";
+import { dayKey } from "./dates";
 import { ensureSession } from "./supabase";
 
-const LS_ENTRIES = "togi.real_entries.v2";
+const LS_ENTRIES = "togi.real_entries.v3";
 const LS_ACTIVITIES = "togi.activities.v1";
 const LS_PROJECTS = "togi.projects.v1";
 
@@ -71,18 +72,19 @@ export async function loadRealEntries(): Promise<StoredEntry[]> {
 }
 
 export function toRealEntry(row: StoredEntry, index: number): RealEntry {
+  const slot = row.matched_plan_id || undefined;
+  let start: number | undefined, end: number | undefined, date: string | undefined;
+  if (row.started_at) {
+    const d = new Date(row.started_at);
+    date = dayKey(d);
+    if (!slot) { start = d.getHours() * 60 + d.getMinutes(); end = start + (row.duration_min || 45); }
+  }
   return {
     id: row.id || `live-${index}`,
-    slot: row.matched_plan_id || undefined,
-    off: !row.matched_plan_id,
-    match: !!row.matched,
-    domain: row.domain as Domain,
-    project: row.project || null,
-    activity: row.activity,
-    title: row.title,
-    note: row.note || null,
-    confidence: row.confidence ?? undefined,
-    live: true,
+    slot, off: !slot, match: !!row.matched,
+    domain: row.domain as Domain, project: row.project || null, activity: row.activity,
+    title: row.title, note: row.note || null, confidence: row.confidence ?? undefined,
+    start, end, date, live: true,
   };
 }
 
@@ -124,7 +126,7 @@ export async function addActivity(name: string) {
 }
 
 /* ---------- Planned blocks (added during planning; local for now) ---------- */
-const LS_PLAN = "togi.plan.v1";
+const LS_PLAN = "togi.plan.v2";
 export function loadPlanLocal(): PlanBlock[] { return lsGet<PlanBlock[]>(LS_PLAN, []); }
 export function savePlanLocal(blocks: PlanBlock[]) { lsSet(LS_PLAN, blocks); }
 
