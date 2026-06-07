@@ -31,6 +31,28 @@ final class SupabaseAuth {
 
     var isSignedIn: Bool { session != nil }
 
+    /// Best-effort identity decoded from the current access token's JWT claims. Email/password
+    /// sign-ups usually carry an email but no display name. Returns nils when signed out.
+    func cachedIdentity() -> (email: String?, name: String?) {
+        guard let token = session?.accessToken else { return (nil, nil) }
+        let segments = token.split(separator: ".")
+        guard segments.count >= 2 else { return (nil, nil) }
+        var payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while payload.count % 4 != 0 { payload += "=" }
+        guard let data = Data(base64Encoded: payload),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (nil, nil)
+        }
+        let email = json["email"] as? String
+        var name: String?
+        if let meta = json["user_metadata"] as? [String: Any] {
+            name = (meta["full_name"] as? String) ?? (meta["name"] as? String)
+        }
+        return (email, name)
+    }
+
     func signIn(email: String, password: String) async throws {
         let body = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
         let token = try await tokenRequest(grant: "password", body: body)
