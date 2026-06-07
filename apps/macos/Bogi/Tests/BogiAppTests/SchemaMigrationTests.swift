@@ -73,4 +73,29 @@ final class SchemaMigrationTests: XCTestCase {
             XCTAssertTrue(["cat", "sub", "title", "desc", "start_at", "end_at"].allSatisfy(cols.contains))
         }
     }
+
+    func testV6ExtendsGoals() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            let cols = try conn.columns(in: "goals").map { $0.name }
+            XCTAssertTrue(["why", "status", "cat", "updated_at"].allSatisfy(cols.contains), "goals missing v6 columns")
+        }
+    }
+
+    func testV6CreatesJournal() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            XCTAssertTrue(try conn.tableExists("journal"))
+            let cols = try conn.columns(in: "journal").map { $0.name }
+            XCTAssertTrue(["id", "created_at", "kind", "goal_id", "cat", "title", "desc", "confidence", "evidence", "status"].allSatisfy(cols.contains))
+        }
+    }
+
+    func testV6AddsGoalIdToUserEvents() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            let cols = try conn.columns(in: "user_events").map { $0.name }
+            XCTAssertTrue(cols.contains("goal_id"), "user_events needs goal_id for check-ins")
+        }
+    }
 }
