@@ -4,15 +4,27 @@ import { type DB } from "../db.js";
 
 type OpenDB = () => DB;
 
+/// Seconds between raw captures (CaptureController ticks every 6s). Used to estimate minutes
+/// from a count of raw observations when no judged segments exist for a range yet.
+const CAPTURE_INTERVAL_SEC = 6;
+const minutesFromObservations = (count: number): number =>
+  Math.round((count * CAPTURE_INTERVAL_SEC) / 6) / 10; // count * 0.1 min, 1 decimal
+
 function ftsExpr(keywords: string): string {
   const toks = keywords.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   return toks.map((t) => `"${t}"`).join(" OR ");
 }
 
-/// Normalize a range bound for string comparison against ISO datetime rows. A date-only value
-/// like "2026-06-06" must cover the whole day: as a start it becomes the day's first instant,
-/// as an end the day's last. Without this, end="2026-06-06" sorts BEFORE "2026-06-06T09:00:00Z"
-/// and excludes every same-day row. Values that already carry a time are returned unchanged.
+function keywordTokens(keywords: string): string[] {
+  return keywords.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+/// Normalize a range bound for comparison against stored datetimes. A date-only value like
+/// "2026-06-06" must cover the whole day: as a start it becomes the day's first instant, as an
+/// end the day's last. Full datetimes pass through unchanged. The SQL wraps both this bound and
+/// the stored column in SQLite `datetime()`, which parses ISO "T…Z", space-separated, and
+/// date-only forms alike — so a same-day query matches GRDB's space-separated rows (which a
+/// raw string compare would wrongly exclude, since ' ' < 'T').
 function normalizeBound(value: string | null | undefined, which: "start" | "end"): string | null {
   if (value == null || value === "") return null;
   if (value.length <= 10) return which === "start" ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`;
@@ -26,20 +38,39 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
       try {
         const lo = normalizeBound(start, "start");
         const hi = normalizeBound(end, "end");
+        const cap = limit ?? 20;
         const rows = db.prepare(
           `SELECT s.start_at AS start_at, s.category AS category, s.on_task AS on_task, f.description AS description
              FROM segment_fts f JOIN activity_segments s ON s.id = f.segment_id
             WHERE segment_fts MATCH ?
-              AND (? IS NULL OR s.start_at >= ?)
-              AND (? IS NULL OR s.start_at <= ?)
+              AND (? IS NULL OR datetime(s.start_at) >= datetime(?))
+              AND (? IS NULL OR datetime(s.start_at) <= datetime(?))
             ORDER BY s.start_at DESC LIMIT ?`
-        ).all(ftsExpr(keywords), lo, lo, hi, hi, limit ?? 20);
-        return JSON.stringify({ results: rows });
+        ).all(ftsExpr(keywords), lo, lo, hi, hi, cap);
+        if (rows.length > 0) return JSON.stringify({ source: "segments", results: rows });
+
+        // Fallback: no judged segments matched — search the raw observations the capture loop
+        // recorded, so the agent can still answer about recent/just-captured activity.
+        const toks = keywordTokens(keywords);
+        const like = toks.length
+          ? "AND (" + toks.map(() => "(text LIKE ? OR active_app LIKE ? OR active_window_title LIKE ?)").join(" OR ") + ")"
+          : "";
+        const likeArgs = toks.flatMap((t) => [`%${t}%`, `%${t}%`, `%${t}%`]);
+        const obs = db.prepare(
+          `SELECT captured_at AS start_at, active_app AS category, active_window_title AS window, text AS description
+             FROM activity_observations
+            WHERE excluded = 0
+              AND (? IS NULL OR datetime(captured_at) >= datetime(?))
+              AND (? IS NULL OR datetime(captured_at) <= datetime(?))
+              ${like}
+            ORDER BY captured_at DESC LIMIT ?`
+        ).all(lo, lo, hi, hi, ...likeArgs, cap);
+        return JSON.stringify({ source: "observations", results: obs });
       } finally { db.close(); }
     },
     {
       name: "search_activity",
-      description: "Search the user's recorded activity by keywords, optionally within a time range. Returns matching activity descriptions with their time and on-task status.",
+      description: "Search the user's recorded activity by keywords, optionally within a time range. Returns matching activity descriptions with their time and on-task status. Falls back to raw, not-yet-judged observations when no labeled segments match (then `source` is \"observations\").",
       schema: z.object({
         keywords: z.string().describe("Space-separated keywords, e.g. 'video editing'"),
         start: z.string().nullish().describe("ISO-8601 start of range, or omit"),
@@ -56,8 +87,38 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const lo = normalizeBound(start, "start");
         const hi = normalizeBound(end, "end");
         const segs = db.prepare(
-          `SELECT minutes, category, on_task FROM activity_segments WHERE start_at >= ? AND start_at <= ?`
+          `SELECT minutes, category, on_task FROM activity_segments
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)`
         ).all(lo, hi) as { minutes: number; category: string | null; on_task: number | null }[];
+        const blocks = db.prepare(
+          `SELECT title, start_at, end_at FROM planned_blocks
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?) ORDER BY start_at`
+        ).all(lo, hi);
+
+        if (segs.length === 0) {
+          // Fallback: no judged segments yet — estimate from raw observations grouped by app.
+          // Minutes are approximate (capture cadence × count); on/off-task is unknown until the
+          // judge runs, so it's omitted rather than guessed.
+          const obs = db.prepare(
+            `SELECT active_app AS app, COUNT(*) AS n FROM activity_observations
+              WHERE excluded = 0 AND datetime(captured_at) >= datetime(?) AND datetime(captured_at) <= datetime(?)
+              GROUP BY active_app ORDER BY n DESC`
+          ).all(lo, hi) as { app: string | null; n: number }[];
+          const observationCount = obs.reduce((a, r) => a + r.n, 0);
+          const topCategories = obs.slice(0, 8).map((r) => ({
+            category: r.app ?? "unknown", minutes: minutesFromObservations(r.n),
+          }));
+          return JSON.stringify({
+            source: "observations",
+            estimated: true,
+            note: "No judged segments for this range yet; minutes estimated from raw capture, on/off-task unknown.",
+            observationCount,
+            totalMinutes: minutesFromObservations(observationCount),
+            topCategories,
+            plannedBlocks: blocks,
+          });
+        }
+
         const totalMinutes = segs.reduce((a, s) => a + s.minutes, 0);
         const onTaskMinutes = segs.filter((s) => s.on_task === 1).reduce((a, s) => a + s.minutes, 0);
         const byCat = new Map<string, number>();
@@ -65,15 +126,12 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const topCategories = [...byCat.entries()]
           .map(([category, minutes]) => ({ category, minutes }))
           .sort((a, b) => b.minutes - a.minutes).slice(0, 8);
-        const blocks = db.prepare(
-          `SELECT title, start_at, end_at FROM planned_blocks WHERE start_at >= ? AND start_at <= ? ORDER BY start_at`
-        ).all(lo, hi);
-        return JSON.stringify({ totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks });
+        return JSON.stringify({ source: "segments", totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks });
       } finally { db.close(); }
     },
     {
       name: "summarize_range",
-      description: "Summarize the user's tracked time in a date range: total minutes, on-task vs off-task, top categories, and the calendar blocks they planned.",
+      description: "Summarize the user's tracked time in a date range: total minutes, on-task vs off-task, top categories, and the calendar blocks they planned. Falls back to an estimate from raw, not-yet-judged observations when no labeled segments exist (then `source` is \"observations\" and minutes are approximate).",
       schema: z.object({
         start: z.string().describe("ISO-8601 start of range"),
         end: z.string().describe("ISO-8601 end of range"),
@@ -91,7 +149,8 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
           `SELECT substr(start_at,1,10) AS date,
                   SUM(minutes) AS totalMinutes,
                   SUM(CASE WHEN on_task = 1 THEN minutes ELSE 0 END) AS onTaskMinutes
-             FROM activity_segments WHERE start_at >= ? AND start_at <= ?
+             FROM activity_segments
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)
             GROUP BY date ORDER BY date`
         ).all(lo, hi);
         return JSON.stringify({ days: rows });
