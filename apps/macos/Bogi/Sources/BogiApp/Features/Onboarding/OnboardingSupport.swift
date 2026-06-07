@@ -31,16 +31,46 @@ enum OnboardingConfig {
     ]
 }
 
-/// Thin wrapper over the notification permission request so the flow never dead-ends on it.
+/// Thin wrapper over the notification permission request so the flow never dead-ends — or crashes.
+///
+/// `UNUserNotificationCenter.current()` asserts with an *uncatchable* `NSException`
+/// ("bundleProxyForCurrentProcess is nil") unless the process is a real `.app` bundle, so a bare
+/// `swift build` dev run would otherwise take the whole app down. Because the assertion fires inside
+/// a `dispatch_once` block, `try`/`catch` can't save us — we must never call into the center outside
+/// a bundle. So we (1) only touch the notification center inside a real `.app`, and (2) when we
+/// can't prompt — unbundled, or the user already denied — redirect to System Settings instead.
 @MainActor
 final class NotificationAuthorizer {
+    private let isBundledApp: () -> Bool
+    private let openSettings: @MainActor () -> Void
+
+    init(isBundledApp: @escaping () -> Bool = { Bundle.main.bundleURL.pathExtension == "app" },
+         openSettings: @escaping @MainActor () -> Void = { SystemSettings.open(.notifications) }) {
+        self.isBundledApp = isBundledApp
+        self.openSettings = openSettings
+    }
+
+    /// Returns whether notifications are authorized. Never throws, never crashes, never dead-ends.
     @discardableResult
     func request() async -> Bool {
-        await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound]) { granted, _ in
-                    continuation.resume(returning: granted)
-                }
+        guard isBundledApp() else {
+            // Dev/unbundled: calling the notification center here would crash. Redirect instead.
+            openSettings()
+            return false
+        }
+        let center = UNUserNotificationCenter.current()
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined:
+            // First run: this shows the native permission prompt ("Togi would like to send…").
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            if !granted { openSettings() }
+            return granted
+        case .denied:
+            // Once denied, macOS won't prompt again — send the user straight to the toggle.
+            openSettings()
+            return false
+        default:
+            return true // authorized / provisional / ephemeral
         }
     }
 }

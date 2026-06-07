@@ -29,10 +29,10 @@ struct OnboardingView: View {
     // MARK: - Chrome
 
     private var background: some View {
-        ZStack {
-            Rectangle().fill(.regularMaterial)
-            BogiGradient.sky.opacity(0.55)
-        }
+        // The full, opaque dreamy sky — NOT `.regularMaterial`. A live blur picks up whatever is
+        // behind the borderless panel (a dark desktop in Dark Mode), which muddied the pastel into
+        // a flat gray-blue. An opaque gradient gives the bright, readable sky the brand intends.
+        BogiGradient.sky
     }
 
     private var header: some View {
@@ -88,8 +88,7 @@ struct OnboardingView: View {
                     coordinator.prefilledName == nil
                         ? "What should I call you?"
                         : "I'll call you \(coordinator.prefilledName ?? ""). Did I get that right?")
-            TextField("your name", text: $coordinator.name)
-                .textFieldStyle(.roundedBorder)
+            brandField("your name", text: $coordinator.name)
                 .frame(maxWidth: 280)
                 .onSubmit { if canContinueName { coordinator.commitName() } }
             Spacer()
@@ -106,18 +105,17 @@ struct OnboardingView: View {
                     Button { coordinator.northStarText = example } label: {
                         Text(example)
                             .font(.callout).foregroundStyle(BogiColor.ink)
-                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
                             .frame(maxWidth: .infinity)
-                            .background(Color.white.opacity(0.55), in: Capsule())
+                            .background(Color.white.opacity(0.72), in: Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.9), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
             }
             VStack(spacing: 8) {
-                TextField("your North Star", text: $coordinator.northStarText)
-                    .textFieldStyle(.roundedBorder)
-                TextField("why does this matter to you? (optional)", text: $coordinator.northStarWhy)
-                    .textFieldStyle(.roundedBorder)
+                brandField("your North Star", text: $coordinator.northStarText)
+                brandField("why does this matter to you? (optional)", text: $coordinator.northStarWhy)
             }
             Spacer(minLength: 4)
             primaryButton("set my North Star", enabled: hasNorthStar) { coordinator.saveNorthStar() }
@@ -131,10 +129,11 @@ struct OnboardingView: View {
             Image(systemName: coordinator.accessibilityGranted ? "checkmark.shield.fill" : "lock.shield")
                 .font(.system(size: 50))
                 .foregroundStyle(coordinator.accessibilityGranted ? .green : BogiColor.primary)
+            if !coordinator.accessibilityGranted { permissionTag("essential", essential: true) }
             heading(coordinator.accessibilityGranted ? "You're all set." : "Here's how I actually watch your back.",
                     coordinator.accessibilityGranted
                         ? "Accessibility is on. I can see what you're working on now, and it all stays on this Mac."
-                        : "To coach you, I read the text on your screen every few seconds. That's it, no screenshots, ever. What I read goes into a local vault that only you can open, and it never leaves this Mac. Password and sensitive fields are skipped automatically. macOS will ask for permission next.")
+                        : "This is the one permission I genuinely need: without it I can't see what you're working on, so I can't coach you at all. To do it, I read the text on your screen every few seconds. That's it, no screenshots, ever. What I read goes into a local vault that only you can open, and it never leaves this Mac. Password and sensitive fields are skipped automatically. macOS will ask for permission next.")
             Spacer()
             if coordinator.accessibilityGranted {
                 primaryButton("continue") { coordinator.advance() }
@@ -151,8 +150,9 @@ struct OnboardingView: View {
             Spacer()
             Image(systemName: "bell.badge")
                 .font(.system(size: 50)).foregroundStyle(BogiColor.primary)
+            permissionTag("optional", essential: false)
             heading("Let me speak up when it counts.",
-                    "With notifications on, I can nudge you when you start to drift, and cheer you on when you stay on track. I'll keep it to what matters.")
+                    "This one's optional. It's just so I can nudge you when you start to drift, and cheer you on when you stay on track. I'll keep it to what matters, and you can change it anytime.")
             Spacer()
             primaryButton("turn on notifications") { Task { await coordinator.requestNotifications() } }
             secondaryButton("maybe later") { coordinator.skip() }
@@ -206,6 +206,34 @@ struct OnboardingView: View {
             .font(.body).foregroundStyle(BogiColor.muted)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A small pill that tells the user up front whether a permission is required or just nice to
+    /// have. "essential" is sky-blue (Togi can't work without it); "optional" is quiet muted gray.
+    private func permissionTag(_ label: String, essential: Bool) -> some View {
+        let tint = essential ? BogiColor.primary : BogiColor.muted
+        return Text(label.uppercased())
+            .font(.caption2.weight(.semibold))
+            .tracking(0.6)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(tint.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(tint.opacity(0.25), lineWidth: 1))
+    }
+
+    /// A light, frosted text field that reads on the bright sky and matches the option pills —
+    /// instead of `.roundedBorder`, whose default fill came back near-black in Dark Mode.
+    private func brandField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .font(.callout)
+            .foregroundStyle(BogiColor.ink)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(BogiColor.primary.opacity(0.28), lineWidth: 1)
+            )
     }
 
     private func primaryButton(_ title: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {

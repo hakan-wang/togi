@@ -205,8 +205,32 @@ else
     echo "  For LOCAL testing only: re-run with ALLOW_UNSIGNED=1 (do NOT distribute the result)." >&2
     exit 1
   fi
+  # Even a local-testing bundle needs a REAL code signature, not just the linker's automatic
+  # ad-hoc one (codesign reports it as "adhoc,linker-signed"). macOS's notification system treats
+  # a linker-signed app as unsigned: UNUserNotificationCenter refuses to register it, so the
+  # permission prompt never appears and the app never shows up in System Settings > Notifications.
+  # A proper ad-hoc signature (`--sign -`, no Developer ID required) fixes that. Sign inside-out,
+  # mirroring the DEVELOPER_ID branch above, but without hardened runtime / timestamp (those are
+  # only for notarized distribution and would need network + a real identity).
+  echo "== ad-hoc codesign (local testing) =="
+  find "$SIDECAR_DST" -type f -print0 | \
+    while IFS= read -r -d '' f; do
+      if file -b "$f" | grep -q "Mach-O"; then codesign --force --sign - "$f"; fi
+    done
+  SPARKLE_VER="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+  for nested in \
+    "$SPARKLE_VER/XPCServices/Downloader.xpc" \
+    "$SPARKLE_VER/XPCServices/Installer.xpc" \
+    "$SPARKLE_VER/Autoupdate" \
+    "$SPARKLE_VER/Updater.app"; do
+    [ -e "$nested" ] && codesign --force --sign - "$nested"
+  done
+  codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework"
+  codesign --force --sign - --entitlements "$PKG/Bogi.entitlements" "$APP"
+  codesign --verify --verbose=2 "$APP"
+
   create_dmg
-  echo "DEVELOPER_ID unset — built UNSIGNED $APP and $DMG for local testing only (ALLOW_UNSIGNED=1)."
+  echo "DEVELOPER_ID unset — built AD-HOC-SIGNED (local testing only) $APP and $DMG (ALLOW_UNSIGNED=1)."
 fi
 echo "done: $APP"
 echo "done: $DMG"

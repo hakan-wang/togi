@@ -21,6 +21,10 @@ final class OnboardingWindow: NSPanel {
         hidesOnDeactivate = false
         animationBehavior = .utilityWindow
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // The brand is a bright, dreamy pastel sky. Pin the panel to the light (aqua) appearance so
+        // system controls (text fields, the prominent button) render light even when the user's Mac
+        // is in Dark Mode — otherwise they come back near-black and clash hard with the sky.
+        appearance = NSAppearance(named: .aqua)
 
         let host = NSHostingView(rootView: OnboardingView(coordinator: coordinator))
         host.autoresizingMask = [.width, .height]

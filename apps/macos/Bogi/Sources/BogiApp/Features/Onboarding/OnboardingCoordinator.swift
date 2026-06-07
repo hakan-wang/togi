@@ -78,7 +78,12 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     func requestAccessibility() {
+        // Fire the native Accessibility prompt (shown the first time, and crash-safe — it's a plain
+        // C API, unlike the notification center). The button says "open system settings", so also
+        // deep-link to the Accessibility pane: that's the reliable redirect when the one-shot prompt
+        // won't appear (already denied, or a dev run), and it never crashes or blocks the flow.
         capture.requestPermission()
+        SystemSettings.open(.accessibility)
     }
 
     /// Polled by the Accessibility screen so it can flip to "you're all set" the moment the grant lands.
