@@ -326,3 +326,26 @@
 .pnd-btn.drop:hover { color: var(--cat-scroll); border-color: color-mix(in srgb, var(--cat-scroll) 45%, transparent); background: var(--cat-scroll-t); }
 .pnd-empty { display: flex; align-items: center; gap: 9px; padding: 16px 18px; font-size: 13px; color: var(--togi-muted); background: var(--togi-card); border: 1px solid var(--togi-line); border-radius: var(--r-sm); }
 .pnd-empty svg { color: var(--cat-health); }
+
+/* ---- Sessions: Talk-to-Togi card, light "due" hero, all-clear ---- */
+.ses-talk { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: var(--togi-card); border: 1px solid var(--togi-line); border-radius: var(--r-md); padding: 13px 16px; cursor: pointer; box-shadow: var(--shadow-card); margin-bottom: 14px; transition: border-color .15s ease, transform .1s ease; }
+.ses-talk:hover { border-color: color-mix(in srgb, var(--togi-live) 45%, var(--togi-line)); transform: translateY(-1px); }
+.ses-talk-orb { width: 44px; height: 44px; flex: 0 0 auto; display: grid; place-items: center; }
+.ses-talk-orb img { width: 40px; height: 40px; object-fit: contain; }
+.ses-talk-txt { flex: 1 1 auto; min-width: 0; }
+.ses-talk-title { font-family: var(--font-display); font-size: 18px; color: var(--togi-ink); line-height: 1.1; }
+.ses-talk-sub { font-size: 12.5px; color: var(--togi-muted); margin-top: 2px; }
+.ses-talk-go { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: radial-gradient(120% 120% at 30% 25%, #3f78ff, var(--togi-live)); flex: 0 0 auto; box-shadow: 0 4px 12px rgba(47,107,246,0.32); }
+
+.ses-now-light { display: flex; align-items: center; gap: 16px; background: var(--togi-card); border: 1px solid color-mix(in srgb, var(--togi-live) 32%, var(--togi-line)); border-radius: var(--r-md); padding: 18px 20px; box-shadow: var(--shadow-card); margin-bottom: 14px; }
+.ses-now-light .ses-now-l { flex: 1 1 auto; min-width: 0; }
+.ses-now-light .ses-now-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--togi-live); margin-bottom: 6px; }
+.ses-now-light .ses-now-title { font-family: var(--font-display); font-size: 21px; color: var(--togi-ink); line-height: 1.05; }
+.ses-now-light .ses-now-note { font-size: 13px; color: var(--togi-ink-2); margin-top: 5px; }
+.ses-now-light .ses-now-meta { font-size: 11.5px; color: var(--togi-muted); margin-top: 7px; }
+.ses-now-light .ses-now-cta { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--togi-live); color: #fff; border: none; border-radius: var(--r-md); padding: 13px 20px; cursor: pointer; font-weight: 700; font-size: 13px; flex: 0 0 auto; box-shadow: 0 6px 18px rgba(47,107,246,0.3); }
+.ses-now-light .ses-now-cta:hover { background: #2a61dd; }
+.ses-now-light .ses-now-orb { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.22); display: grid; place-items: center; }
+
+.ses-allclear { display: flex; align-items: center; gap: 9px; padding: 16px 18px; font-size: 13px; color: var(--togi-muted); background: var(--togi-card); border: 1px solid var(--togi-line); border-radius: var(--r-md); margin-bottom: 14px; }
+.ses-allclear svg { color: var(--cat-health); }

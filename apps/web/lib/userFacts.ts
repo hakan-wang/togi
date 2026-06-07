@@ -5,9 +5,9 @@
    ============================================================ */
 import { seedHistory } from "./behavior";
 
-export interface UserFacts { wakeMin: number; sleepMin: number; }
+export interface UserFacts { wakeMin: number; sleepMin: number; planningMin: number; }
 const LS = "togi.facts.v1";
-const DEFAULTS: UserFacts = { wakeMin: 7 * 60, sleepMin: 23 * 60 };
+const DEFAULTS: UserFacts = { wakeMin: 7 * 60, sleepMin: 23 * 60, planningMin: 21 * 60 };
 
 /** Learn the usual wake time from the earliest real activity across history. */
 function learnWake(): number {
