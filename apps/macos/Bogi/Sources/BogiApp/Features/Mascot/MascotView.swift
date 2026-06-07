@@ -37,8 +37,12 @@ struct MascotView: View {
                 // text) are suppressed while a voice exchange is active so they can't sneak in
                 // beside the aura.
                 if !viewModel.voiceActive, let text = viewModel.bubbleText {
-                    SpeechBubble(text: text, escalationLevel: viewModel.escalationLevel)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    SpeechBubble(
+                        text: text,
+                        escalationLevel: viewModel.escalationLevel,
+                        onDismiss: viewModel.introActive ? { viewModel.dismissIntro() } : nil
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 ZStack {
@@ -108,7 +112,11 @@ struct MascotView: View {
                 dragStartMouse = nil
                 dragStartOrigin = nil
                 didDrag = false
-                if wasClick { onActivate?() }
+                if wasClick {
+                    // Opening chat ends the intro moment, so retire its bubble alongside.
+                    if viewModel.introActive { viewModel.dismissIntro() }
+                    onActivate?()
+                }
             }
     }
 
@@ -232,9 +240,12 @@ private struct MouthShape: Shape {
 }
 
 /// Small non-modal callout above the mascot. Supportive, not naggy. Copy comes from the caller.
+/// When `onDismiss` is supplied (the one-time intro), it shows a quiet `×` to dismiss; nudges pass
+/// nil and stay button-less.
 private struct SpeechBubble: View {
     let text: String
     let escalationLevel: Int
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         Text(text)
@@ -252,6 +263,21 @@ private struct SpeechBubble: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(escalationLevel >= 2 ? Color.red.opacity(0.6) : Color.white.opacity(0.7), lineWidth: 1)
             )
+            .overlay(alignment: .topTrailing) {
+                if let onDismiss {
+                    // A tap gesture, not a Button: the mascot panel is non-activating, so the
+                    // window never becomes key and a Button can swallow the first click. The
+                    // existing mascot tap is gesture-based for the same reason.
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(BogiColor.muted)
+                        .background(Circle().fill(.regularMaterial))
+                        .contentShape(Circle())
+                        .onTapGesture { onDismiss() }
+                        .offset(x: 6, y: -6)
+                        .accessibilityLabel("Dismiss")
+                }
+            }
             .shadow(color: Color(hex: 0x285078).opacity(0.25), radius: 8, y: 4)
     }
 }
