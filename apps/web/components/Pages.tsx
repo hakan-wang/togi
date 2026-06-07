@@ -7,7 +7,7 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { CATEGORIES, DOMAINS, SHORT_TERM_INSIGHTS } from "../lib/data";
-import { IcArrow, IcCheck, IcClose, IcMic, IcSpark } from "./icons";
+import { IcArrow, IcCheck, IcClose, IcMic, IcSpark, IcPlus } from "./icons";
 import { computeStats, seedHistory } from "../lib/behavior";
 import { dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
 
@@ -109,25 +109,42 @@ function Toggle({ on, onClick }: any) {
   return <button className={"toggle" + (on ? " on" : "")} onClick={onClick}><span className="toggle-knob" /></button>;
 }
 
-export function SettingsPage({ onConnectCalendar, calStatus, calConnected }: { onConnectCalendar?: () => void; calStatus?: string | null; calConnected?: boolean }) {
+export function SettingsPage({ onConnectCalendar, onDisconnectCalendar, onAddEvent, calStatus, calConnected, calConfigured, calEmail }: { onConnectCalendar?: () => void; onDisconnectCalendar?: () => void; onAddEvent?: () => void; calStatus?: string | null; calConnected?: boolean; calConfigured?: boolean; calEmail?: string | null }) {
   const [s, setS] = useState<any>({ checkin: true, call: false, blank: false, wake: true, reduce: false });
   const set = (k: string) => setS((p: any) => ({ ...p, [k]: !p[k] }));
   const Row = ({ k, title, sub }: any) => (
     <div className="set-row"><div><div className="set-title">{title}</div><div className="set-sub">{sub}</div></div><Toggle on={s[k]} onClick={() => set(k)} /></div>
   );
+  const calSub = calConnected
+    ? (calEmail ? `Connected as ${calEmail}` : "Google Calendar connected")
+    : calConfigured === false
+      ? "Not configured yet — add Google credentials on the server (see SETUP_GOOGLE_CALENDAR.md)."
+      : "Connect so Togi can read your real events and let you edit them here.";
   return (
     <div className="page-narrow fade-up">
       <div className="card">
-        <div className="card-head"><span className="card-title">Calendar</span><span className="card-sub">your real day</span></div>
+        <div className="card-head"><span className="card-title">Calendar</span><span className="card-sub">read &amp; edit your real day</span></div>
         <div className="set-row">
           <div>
             <div className="set-title">{calConnected ? "Google Calendar connected" : "Connect Google Calendar"}</div>
-            <div className="set-sub">{calStatus || "Pull in today’s real events so Togi can check in when blocks end."}</div>
+            <div className="set-sub">{calStatus || calSub}</div>
           </div>
-          <button className="cta-btn" style={{ flex: "0 0 auto" }} onClick={() => onConnectCalendar && onConnectCalendar()}>
+          <button className="cta-btn" style={{ flex: "0 0 auto" }} disabled={calConfigured === false} onClick={() => onConnectCalendar && onConnectCalendar()}>
             <IcMic size={15} /> {calConnected ? "Refresh" : "Connect"}
           </button>
         </div>
+        {calConnected && (
+          <>
+            <div className="hairline" />
+            <div className="set-row">
+              <div><div className="set-title">Edit your calendar</div><div className="set-sub">Add an event, or tap the ✎ on any Google block in the Plan view.</div></div>
+              <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+                <button className="btn-ghost" onClick={() => onAddEvent && onAddEvent()}><IcPlus size={14} /> Add event</button>
+                <button className="btn-ghost" style={{ color: "var(--danger, #d8443c)" }} onClick={() => onDisconnectCalendar && onDisconnectCalendar()}>Disconnect</button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
       <div className="card">
         <div className="card-head"><span className="card-title">Check-ins</span><span className="card-sub">a nudge, never a nag</span></div>

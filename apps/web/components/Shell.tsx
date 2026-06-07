@@ -10,6 +10,9 @@ import { DOMAINS, DAY_START, Domain, JUST_ENDED, NOW, PLAN, PlanBlock, REAL_SEED
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
 import { parseTimeRange } from "../lib/planparse";
+import { advisePlan } from "../lib/planAdvisor";
+import { loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
+import { computeStats, seedHistory } from "../lib/behavior";
 import { addActivity, addProject, loadPlanLocal, loadRealEntries, loadVocabulary, savePlanLocal, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
 import { IcChevron, IcInsights, IcMic, IcSettings, IcToday } from "./icons";
 import { TodayCheckin, InsightBanner, CapContext, CheckinInput, CheckinResult } from "./Today";
@@ -18,6 +21,8 @@ import { TogiDock } from "./Dock";
 import { SessionsView } from "./Sessions";
 import { SessionOverlay } from "./SessionOverlay";
 import { InsightsPage, SettingsPage } from "./Pages";
+import { GcalEventEditor, EventDraft } from "./GcalEventEditor";
+import * as gcal from "../lib/gcal";
 
 const NAV_B = [
   { id: "today", label: "Today", Icon: IcToday },
@@ -81,8 +86,11 @@ export function TogiAppB() {
   const [banner, setBanner] = useState(true);
   const [real, setReal] = useState<RealEntry[]>(REAL_SEED);
   const [plan, setPlan] = useState<PlanBlock[]>(PLAN);
+  const [calConfigured, setCalConfigured] = useState(false);
   const [calConnected, setCalConnected] = useState(false);
+  const [calEmail, setCalEmail] = useState<string | null>(null);
   const [calStatus, setCalStatus] = useState<string | null>(null);
+  const [gcalEditor, setGcalEditor] = useState<{ block: PlanBlock | null } | null>(null);
   const [insight, setInsight] = useState<BannerInsight>(() => computeInsight(REAL_SEED));
   const [vocab, setVocab] = useState<Vocabulary>({ projects: [], activities: STARTER_ACTIVITIES });
   const ackTimer = useRef<any>(null);
@@ -108,6 +116,29 @@ export function TogiAppB() {
     })();
   }, []);
 
+  // Google Calendar: read connection status on load, and handle the OAuth return.
+  useEffect(() => {
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const ret = params.get("gcal");
+      if (ret) {
+        if (ret === "connected") setCalStatus("Connected — loading today’s events…");
+        else if (ret === "denied") setCalStatus("Connection cancelled.");
+        else setCalStatus("Couldn’t connect — check the setup guide and try again.");
+        window.history.replaceState({}, "", window.location.pathname); // clean the URL
+      }
+      try {
+        const s = await gcal.getStatus();
+        setCalConfigured(s.configured);
+        setCalConnected(s.connected);
+        setCalEmail(s.email);
+        if (s.connected) await refreshCalendar(ret === "connected");
+        else if (ret === "connected") setCalStatus("Connected, but no calendar found yet — try Refresh.");
+      } catch { /* leave defaults */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSession({ mode: "ask" }); }
@@ -116,6 +147,11 @@ export function TogiAppB() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   useEffect(() => () => clearTimeout(ackTimer.current), []);
+
+  // Make sure the behavioral memory exists so planning can use it (background, once).
+  useEffect(() => {
+    (async () => { try { if (!loadMemory().length) await refreshInsights(computeStats(seedHistory()), new Date().toISOString()); } catch { /* ignore */ } })();
+  }, []);
 
   const openSession = (mode: string, ctx?: any) => setSession({ mode, ctx });
   // route check-in/self entry points to the REAL capture card; ask/plan stay scripted
@@ -175,27 +211,74 @@ export function TogiAppB() {
       return { status: "clarify", question: !tr ? "When, and for how long? Give me a concrete time." : (r.clarify_question || "What exactly? Be specific so I can check it later."), draftText: utterance };
     }
     const range = tr || { start: NOW, end: NOW + (r.durationMin || 60) };
-    const block: PlanBlock = { id: `plan-${Date.now()}`, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
+    let block: PlanBlock = { id: `plan-${Date.now()}`, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
+    // Close the loop: Togi consults the behavioral memory, may move/pad the block, explains why.
+    const adv = advisePlan(block, surfaced(loadMemory()));
+    block = adv.block;
+    if (adv.reason) block.note = (block.note ? block.note + " · " : "") + `Togi: ${adv.reason}`;
     const nextPlan = [...plan, block];
     setPlan(nextPlan); setTab("today"); setView("plan");
     savePlanLocal(nextPlan.filter((b) => b.id.startsWith("plan-")));
     if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
     if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
-    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(range.start)}–${fmt(range.end)}`);
+    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(block.start)}–${fmt(block.end)}${adv.reason ? " — " + adv.reason : ""}`);
     return { status: "done" };
   }
 
-  // ---- Connect Google Calendar (read today's real events into the Plan timeline) ----
+  // ---- Google Calendar: connect / refresh / disconnect (server-side OAuth) ----
+  // Merge Google events into the Plan, replacing any previous Google blocks but
+  // keeping the user's own planned/demo blocks.
+  function mergeGcal(evs: PlanBlock[]) {
+    setPlan((cur) => [...cur.filter((b) => b.source !== "gcal"), ...evs]);
+  }
+
   async function connectCalendar() {
-    setCalStatus("Connecting…");
+    if (!calConnected) {
+      setCalStatus("Opening Google sign-in…");
+      try { await gcal.startConnect(); }              // redirects away to Google
+      catch (e: any) { setCalStatus(e?.message || "Couldn’t start Google sign-in."); }
+      return;
+    }
+    await refreshCalendar(true); // already connected → Refresh re-pulls today's events
+  }
+
+  async function refreshCalendar(announce = false) {
+    if (announce) setCalStatus("Refreshing…");
     try {
-      const { getCalendarToken, fetchTodayEvents } = await import("../lib/gcal");
-      const token = await getCalendarToken();
-      const evs = await fetchTodayEvents(token);
+      const evs = await gcal.fetchTodayEvents();
       setCalConnected(true);
-      if (evs.length) { setPlan(evs); setTab("today"); setView("plan"); setCalStatus(`Connected — ${evs.length} event${evs.length > 1 ? "s" : ""} today.`); }
-      else setCalStatus("Connected — no timed events today (showing the demo day).");
-    } catch (e: any) { setCalStatus(e?.message || "Couldn’t connect — check the setup guide."); }
+      mergeGcal(evs);
+      if (announce) {
+        setTab("today"); setView("plan");
+        setCalStatus(evs.length ? `Connected — ${evs.length} event${evs.length > 1 ? "s" : ""} today.` : "Connected — no timed events today.");
+      }
+    } catch (e: any) {
+      if (e instanceof gcal.CalendarDisconnected) {
+        setCalConnected(false); setCalEmail(null); setPlan((cur) => cur.filter((b) => b.source !== "gcal"));
+        setCalStatus("Disconnected — reconnect to sync again.");
+      } else setCalStatus(e?.message || "Couldn’t load calendar events.");
+    }
+  }
+
+  async function disconnectCalendar() {
+    setCalStatus("Disconnecting…");
+    try { await gcal.disconnect(); } catch { /* best effort */ }
+    setCalConnected(false); setCalEmail(null);
+    setPlan((cur) => cur.filter((b) => b.source !== "gcal"));
+    setCalStatus("Disconnected.");
+  }
+
+  // ---- Edit Google Calendar from inside Togi (write-back) ----
+  async function saveGcalEvent(draft: EventDraft, gcalId?: string) {
+    if (gcalId) await gcal.updateEvent(gcalId, draft);
+    else await gcal.createEvent(draft);
+    await refreshCalendar(false);
+    logged(gcalId ? "Updated in Google Calendar." : "Added to Google Calendar.");
+  }
+  async function deleteGcalEvent(gcalId: string) {
+    await gcal.deleteEvent(gcalId);
+    await refreshCalendar(false);
+    logged("Deleted from Google Calendar.");
   }
 
   const onAction = (action: string) => {
@@ -218,17 +301,19 @@ export function TogiAppB() {
               <DayCalendar view={view} setView={setView} real={real} plan={plan} density="regular"
                 onPlanDay={() => setCapture({ context: planCtx(), plan: true })}
                 onSelfCheckin={(label: string) => setCapture({ context: selfCtx(label) })}
-                onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })} />
+                onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })}
+                onEditBlock={calConnected ? (b: PlanBlock) => setGcalEditor({ block: b }) : undefined} />
             </div>
           </div>
         )}
         {tab === "sessions" && (<div className="content-scroll"><SessionsView onOpenSession={startSession} /></div>)}
         {tab === "insights" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header><InsightsPage onOpenSession={openSession} /></div></div>)}
-        {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage onConnectCalendar={connectCalendar} calStatus={calStatus} calConnected={calConnected} /></div></div>)}
+        {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage onConnectCalendar={connectCalendar} onDisconnectCalendar={disconnectCalendar} onAddEvent={() => setGcalEditor({ block: null })} calStatus={calStatus} calConnected={calConnected} calConfigured={calConfigured} calEmail={calEmail} /></div></div>)}
       </main>
       {dockVisible && <TogiDock onOpenSession={startSession} coach={coach} />}
       {capture && <TodayCheckin context={capture.context} onSubmit={(input) => capture.plan ? handlePlan(capture.context, input) : handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
       {session && <SessionOverlay mode={session.mode} ctx={session.ctx} onClose={() => setSession(null)} onAction={onAction} />}
+      {gcalEditor && <GcalEventEditor block={gcalEditor.block} onSave={saveGcalEvent} onDelete={deleteGcalEvent} onClose={() => setGcalEditor(null)} />}
     </div>
   );
 }

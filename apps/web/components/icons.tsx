@@ -17,6 +17,7 @@ export const IcMic = (p: P) => <Svg {...p}><rect x="9" y="2.5" width="6" height=
 export const IcChat = (p: P) => <Svg {...p}><path d="M20 11.5a7.5 7.5 0 0 1-10.8 6.8L4 19.5l1.2-4.1A7.5 7.5 0 1 1 20 11.5Z" /></Svg>;
 export const IcSpark = (p: P) => <Svg {...p}><path d="M12 3.5 13.7 9l5.3 1.7-5.3 1.7L12 18l-1.7-5.6L5 10.7 10.3 9 12 3.5Z" /></Svg>;
 export const IcArrow = (p: P) => <Svg {...p}><path d="M5 12h14M13 6l6 6-6 6" /></Svg>;
+export const IcEdit = (p: P) => <Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" /></Svg>;
 export const IcArrowUp = (p: P) => <Svg {...p}><path d="M12 19V5M6 11l6-6 6 6" /></Svg>;
 export const IcTrash = (p: P) => <Svg {...p}><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></Svg>;
 export const IcCheck = (p: P) => <Svg {...p}><path d="M5 12.5l4.5 4.5L19 6.5" /></Svg>;

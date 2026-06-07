@@ -6,7 +6,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { DOMAINS, DAY_START, DAY_END, NOW, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
-import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus } from "./icons";
+import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus, IcEdit } from "./icons";
 
 const WEEK = [
   { d: "Mon", n: 2 }, { d: "Tue", n: 3 }, { d: "Wed", n: 4 },
@@ -28,13 +28,19 @@ function DaySelector({ onPlanDay }: any) {
   );
 }
 
-function BlockEl({ top, height, domain, title, project, note, time, layer, tag, live, onClick }: any) {
+function BlockEl({ top, height, domain, title, project, note, time, layer, tag, live, onClick, editable, onEdit }: any) {
   const C = DOMAINS[domain];
   const tiny = height < 40;
   return (
     <div className={"blk blk-" + layer + (tag ? " has-tag" : "") + (live ? " blk-live" : "")}
       style={{ top, height: Math.max(height, 22), background: C.tint, ["--c" as any]: C.color }} onClick={onClick}>
       <span className="blk-rail" />
+      {editable && (
+        <button className="blk-edit" title="Edit in Google Calendar" onClick={onEdit}
+          style={{ position: "absolute", top: 4, right: 4, zIndex: 2, display: "grid", placeItems: "center", width: 22, height: 22, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.7)", color: C.color, cursor: "pointer" }}>
+          <IcEdit size={12} />
+        </button>
+      )}
       <div className="blk-body">
         <div className="blk-row">
           <span className="blk-title">{title}</span>
@@ -124,7 +130,7 @@ function MultiDay({ span, plan }: { span: string; plan: any[] }) {
   );
 }
 
-export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPlanDay, onSelfCheckin, onTalkBlock, density }: any) {
+export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPlanDay, onSelfCheckin, onTalkBlock, onEditBlock, density }: any) {
   const [expanded, setExpanded] = useState(true);
   const [span, setSpan] = useState("1d");
   const [listen, setListen] = useState<any>(null);
@@ -221,7 +227,9 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPl
               <div className="plan-layer">
                 {plan.map((p: any) => (
                   <BlockEl key={p.id} layer="plan" top={yOf(p.start)} height={yOf(p.end) - yOf(p.start)}
-                    domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`} onClick={(e: any) => onBlock(e, p, p.title)} />
+                    domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`}
+                    editable={p.source === "gcal" && !!onEditBlock} onEdit={(e: any) => { e.stopPropagation(); onEditBlock(p); }}
+                    onClick={(e: any) => onBlock(e, p, p.title)} />
                 ))}
               </div>
               <div className="real-layer">
