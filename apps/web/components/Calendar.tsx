@@ -1,27 +1,27 @@
 /* ============================================================
-   Togi — DayCalendar. Plan / Real with a rack-focus toggle.
-   Blocks render: title (headline) · project (chip) · note (subtitle), colored by domain.
+   Togi — DayCalendar. Real dates + real clock. Plan / Real toggle.
+   Click a day to view it; the + plans that day with Togi. Now-line tracks the
+   real time and only shows on today. Blocks render: title · project chip · note.
    ============================================================ */
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { DOMAINS, DAY_START, DAY_END, NOW, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
+import { DOMAINS, DAY_START, DAY_END, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
+import { dayKey, dayLabel, weekDays, WeekDay } from "../lib/dates";
 import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus, IcEdit } from "./icons";
 
-const WEEK = [
-  { d: "Mon", n: 2 }, { d: "Tue", n: 3 }, { d: "Wed", n: 4 },
-  { d: "Thu", n: 5, today: true },
-  { d: "Fri", n: 6, future: true }, { d: "Sat", n: 7, future: true }, { d: "Sun", n: 8, future: true },
-];
-
-function DaySelector({ onPlanDay }: any) {
+function DaySelector({ selectedDate, onSelectDay, onPlanDay }: any) {
+  const week = weekDays();
   return (
     <div className="day-strip">
-      {WEEK.map((w: any) => (
-        <button key={w.d} className={"day-cell" + (w.today ? " today" : "") + (w.future ? " future" : "")}
-          onClick={() => w.future && onPlanDay(w)} title={w.future ? "Plan this day with Togi" : ""}>
-          <span className="day-cell-d">{w.d}</span><span className="day-cell-n num">{w.n}</span>
-          {w.future && <span className="day-cell-plan"><IcPlus size={11} /></span>}
+      {week.map((w: WeekDay) => (
+        <button key={w.key}
+          className={"day-cell" + (w.key === selectedDate ? " sel" : "") + (w.isToday ? " today" : "") + (w.isFuture ? " future" : "")}
+          onClick={() => onSelectDay(w.key)} title={w.isToday ? "Today" : w.dow}>
+          <span className="day-cell-d">{w.dow}</span><span className="day-cell-n num">{w.n}</span>
+          {!w.isPast && (
+            <span className="day-cell-plan" title="Plan this day with Togi" onClick={(e) => { e.stopPropagation(); onPlanDay(w.key); }}><IcPlus size={11} /></span>
+          )}
         </button>
       ))}
     </div>
@@ -61,13 +61,14 @@ function BlockEl({ top, height, domain, title, project, note, time, layer, tag, 
   );
 }
 
-function realStart(r: RealEntry, plan: any[]): number { const p = r.slot ? plan.find((x) => x.id === r.slot) : null; return p ? p.start : (r.start ?? NOW); }
+function realStart(r: RealEntry, plan: any[]): number { const p = r.slot ? plan.find((x) => x.id === r.slot) : null; return p ? p.start : (r.start ?? 12 * 60); }
 
 function MinimizedDay({ view, real, plan, onExpand, onTalkBlock }: any) {
   const list = view === "plan" ? plan : [...real].sort((a: RealEntry, b: RealEntry) => realStart(a, plan) - realStart(b, plan));
   return (
     <div className="mini">
       <div className="mini-list">
+        {list.length === 0 && <div className="mini-empty num" style={{ padding: "10px 4px", color: "var(--togi-muted)", fontSize: 12 }}>Nothing here yet — tap + to plan.</div>}
         {list.slice(0, 5).map((b: any) => {
           const C = DOMAINS[b.domain];
           return (
@@ -98,7 +99,9 @@ function MinimizedDay({ view, real, plan, onExpand, onTalkBlock }: any) {
 }
 
 function MultiDay({ span, plan }: { span: string; plan: any[] }) {
-  const days = span === "3d" ? WEEK.filter((w) => ["Thu", "Fri", "Sat"].includes(w.d)) : WEEK;
+  const wk = weekDays();
+  const todayIdx = Math.max(0, wk.findIndex((w) => w.isToday));
+  const days = span === "3d" ? wk.slice(todayIdx, todayIdx + 3) : wk;
   const ppm = 0.5;
   const H = (DAY_END - DAY_START) * ppm;
   const yOf = (m: number) => (m - DAY_START) * ppm;
@@ -110,35 +113,32 @@ function MultiDay({ span, plan }: { span: string; plan: any[] }) {
       <div className="multi-gutter" style={{ height: H }}>
         {labels.map((m) => <div key={m} className="multi-hr num" style={{ top: yOf(m) }}>{fmt(m)}</div>)}
       </div>
-      {days.map((w: any, i: number) => {
-        const isToday = !!w.today;
-        return (
-          <div className="multi-col" key={w.d}>
-            <div className={"multi-col-h" + (isToday ? " today" : "")}><span className="multi-col-d">{w.d}</span> <span className="multi-col-n num">{w.n}</span></div>
-            <div className="multi-track" style={{ height: H }}>
-              {labels.map((m) => <div key={m} className="multi-line" style={{ top: yOf(m) }} />)}
-              {dayBlocks(i, isToday).map((b) => {
-                const C = DOMAINS[b.domain];
-                return <div className="multi-blk" key={b.id} title={`${C.label} · ${b.title}`}
-                  style={{ top: yOf(b.start), height: Math.max((b.end - b.start) * ppm, 11), background: C.color, opacity: isToday ? 1 : 0.8 }} />;
-              })}
-            </div>
+      {days.map((w: WeekDay, i: number) => (
+        <div className="multi-col" key={w.key}>
+          <div className={"multi-col-h" + (w.isToday ? " today" : "")}><span className="multi-col-d">{w.dow}</span> <span className="multi-col-n num">{w.n}</span></div>
+          <div className="multi-track" style={{ height: H }}>
+            {labels.map((m) => <div key={m} className="multi-line" style={{ top: yOf(m) }} />)}
+            {dayBlocks(i, w.isToday).map((b) => {
+              const C = DOMAINS[b.domain];
+              return <div className="multi-blk" key={b.id} title={`${C.label} · ${b.title}`}
+                style={{ top: yOf(b.start), height: Math.max((b.end - b.start) * ppm, 11), background: C.color, opacity: w.isToday ? 1 : 0.8 }} />;
+            })}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }
 
-export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPlanDay, onSelfCheckin, onTalkBlock, onEditBlock, density }: any) {
+export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now = 0, selectedDate, onSelectDay, onPlanDay, onSelfCheckin, onTalkBlock, onEditBlock, density }: any) {
   const [expanded, setExpanded] = useState(true);
   const [span, setSpan] = useState("1d");
   const [listen, setListen] = useState<any>(null);
   const [drag, setDrag] = useState<any>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
+  const isToday = selectedDate === dayKey();
   const ppm = density === "compact" ? 0.62 : density === "comfy" ? 0.82 : 0.72;
-  const now = NOW;
   const trackH = (DAY_END - DAY_START) * ppm;
   const yOf = (m: number) => (m - DAY_START) * ppm;
   const mOf = (y: number) => Math.round((y / ppm + DAY_START) / 5) * 5;
@@ -190,7 +190,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPl
   return (
     <div className={"cal" + (expanded ? " expanded" : " mini-mode")}>
       <div className="cal-head">
-        <div className="cal-head-left"><div className="cal-eyebrow">Thursday · 5 June</div><DaySelector onPlanDay={onPlanDay} /></div>
+        <div className="cal-head-left"><div className="cal-eyebrow">{dayLabel(selectedDate)}{isToday ? " · today" : ""}</div><DaySelector selectedDate={selectedDate} onSelectDay={onSelectDay} onPlanDay={onPlanDay} /></div>
         <div className="cal-head-right">
           {expanded && (
             <div className="span-seg">
@@ -221,7 +221,13 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPl
               <div key={i} className="cal-gap" style={{ top: yOf(g.s), height: yOf(g.e) - yOf(g.s) }}><span className="cal-gap-label"><IcPlus size={12} /> Untracked · tap to tell Togi</span></div>
             ))}
 
-            {now >= DAY_START && now <= DAY_END && (<div className="cal-now" style={{ top: yOf(now) }}><span className="cal-now-dot" /><span className="cal-now-label num">now</span></div>)}
+            {isToday && now >= DAY_START && now <= DAY_END && (<div className="cal-now" style={{ top: yOf(now) }}><span className="cal-now-dot" /><span className="cal-now-label num">now</span></div>)}
+
+            {plan.length === 0 && real.length === 0 && (
+              <div className="cal-empty" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--togi-muted)", pointerEvents: "none", fontSize: 13 }}>
+                Nothing on {dayLabel(selectedDate)} yet — tap the <strong style={{ margin: "0 4px" }}>+</strong> on the day, or a gap, to plan.
+              </div>
+            )}
 
             <div className="cal-stage" data-view={view}>
               <div className="plan-layer">
@@ -235,8 +241,8 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, onPl
               <div className="real-layer">
                 {real.map((r: RealEntry) => {
                   const p = r.slot ? plan.find((x: any) => x.id === r.slot) : null;
-                  const s = p ? p.start : (r.start ?? NOW);
-                  const e2 = p ? p.end : (r.end ?? NOW);
+                  const s = p ? p.start : (r.start ?? 12 * 60);
+                  const e2 = p ? p.end : (r.end ?? 13 * 60);
                   const tag = r.off ? "unplanned" : r.match ? "match" : "off";
                   return (
                     <div key={r.id} className={"real-pos" + (p ? " aligned" : "")} style={{ position: "absolute", top: yOf(s), left: 0, right: 0, height: yOf(e2) - yOf(s) }}>

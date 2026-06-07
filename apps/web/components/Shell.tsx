@@ -6,7 +6,9 @@
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
-import { DOMAINS, DAY_START, Domain, JUST_ENDED, NOW, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
+import { DOMAINS, DAY_START, DAY_END, Domain, JUST_ENDED, PLAN, PlanBlock, REAL_SEED, RealEntry, STARTER_ACTIVITIES, fmt } from "../lib/data";
+import { dayKey, nowMinutes, onDay } from "../lib/dates";
+import { loadFacts } from "../lib/userFacts";
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
 import { parseTimeRange } from "../lib/planparse";
@@ -86,6 +88,9 @@ export function TogiAppB() {
   const [banner, setBanner] = useState(true);
   const [real, setReal] = useState<RealEntry[]>(REAL_SEED);
   const [plan, setPlan] = useState<PlanBlock[]>(PLAN);
+  const [selectedDate, setSelectedDate] = useState<string>(() => dayKey());
+  const [nowMin, setNowMin] = useState<number>(() => nowMinutes());
+  const [bannerInsight, setBannerInsight] = useState<BannerInsight>({ domain: "Errands & life admin", text: "You underestimate errands and travel by ~90 min a day — that’s why afternoons crack.", metric: "+90 min/day" });
   const [calConfigured, setCalConfigured] = useState(false);
   const [calConnected, setCalConnected] = useState(false);
   const [calEmail, setCalEmail] = useState<string | null>(null);
@@ -148,9 +153,19 @@ export function TogiAppB() {
   }, []);
   useEffect(() => () => clearTimeout(ackTimer.current), []);
 
-  // Make sure the behavioral memory exists so planning can use it (background, once).
+  // Real-time clock for the "now" line.
+  useEffect(() => { const t = setInterval(() => setNowMin(nowMinutes()), 15000); return () => clearInterval(t); }, []);
+
+  // Populate the behavioral memory (so planning can use it) and surface a NON-obvious one in the banner.
   useEffect(() => {
-    (async () => { try { if (!loadMemory().length) await refreshInsights(computeStats(seedHistory()), new Date().toISOString()); } catch { /* ignore */ } })();
+    (async () => {
+      try {
+        let rows = loadMemory();
+        if (!rows.length) rows = await refreshInsights(computeStats(seedHistory()), new Date().toISOString());
+        const top = surfaced(rows)[0];
+        if (top) setBannerInsight({ domain: "Work", text: top.statement, metric: top.metric });
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   const openSession = (mode: string, ctx?: any) => setSession({ mode, ctx });
@@ -167,7 +182,8 @@ export function TogiAppB() {
   function placeLive(entry: RealEntry, durationMin?: number): RealEntry {
     if (entry.slot) return entry;
     const dur = durationMin || 45;
-    return { ...entry, off: true, end: NOW, start: Math.max(DAY_START, NOW - dur) };
+    const n = nowMinutes();
+    return { ...entry, off: true, end: n, start: Math.max(DAY_START, n - dur) };
   }
 
   // ---- THE PIPELINE (any entry point) ----
@@ -184,6 +200,7 @@ export function TogiAppB() {
     const entry = placeLive({
       id: `live-${Date.now()}`, slot: matchedPlanId || undefined, off: !matchedPlanId, match: r.matched,
       domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note, confidence: r.confidence, live: true,
+      date: selectedDate,
     }, r.durationMin ?? undefined);
 
     const next = [...real, entry];
@@ -210,18 +227,23 @@ export function TogiAppB() {
     if (!input.clarifyAnswer && (!tr || r.confidence < 0.6)) {
       return { status: "clarify", question: !tr ? "When, and for how long? Give me a concrete time." : (r.clarify_question || "What exactly? Be specific so I can check it later."), draftText: utterance };
     }
-    const range = tr || { start: NOW, end: NOW + (r.durationMin || 60) };
-    let block: PlanBlock = { id: `plan-${Date.now()}`, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
+    const facts = loadFacts();
+    const range = tr || { start: facts.wakeMin + 120, end: facts.wakeMin + 120 + (r.durationMin || 60) };
+    let block: PlanBlock = { id: `plan-${Date.now()}`, date: selectedDate, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
     // Close the loop: Togi consults the behavioral memory, may move/pad the block, explains why.
     const adv = advisePlan(block, surfaced(loadMemory()));
     block = adv.block;
-    if (adv.reason) block.note = (block.note ? block.note + " · " : "") + `Togi: ${adv.reason}`;
+    // Respect the user's facts: never schedule before their usual wake time.
+    let wakeNote = "";
+    if (block.start < facts.wakeMin) { const d = block.end - block.start; block = { ...block, start: facts.wakeMin, end: Math.min(DAY_END, facts.wakeMin + d) }; wakeNote = `kept it after your usual ${fmt(facts.wakeMin)} start`; }
+    const reasonAll = [adv.reason, wakeNote].filter(Boolean).join(", and ");
+    if (reasonAll) block.note = (block.note ? block.note + " · " : "") + `Togi: ${reasonAll}`;
     const nextPlan = [...plan, block];
     setPlan(nextPlan); setTab("today"); setView("plan");
     savePlanLocal(nextPlan.filter((b) => b.id.startsWith("plan-")));
     if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
     if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
-    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(block.start)}–${fmt(block.end)}${adv.reason ? " — " + adv.reason : ""}`);
+    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(block.start)}–${fmt(block.end)}${reasonAll ? " — " + reasonAll : ""}`);
     return { status: "done" };
   }
 
@@ -288,6 +310,10 @@ export function TogiAppB() {
   };
 
   const dockVisible = tab !== "settings";
+  const today = dayKey();
+  const isToday = selectedDate === today;
+  const planForDay = plan.filter((b) => onDay(b, selectedDate, today));
+  const realForDay = real.filter((b) => onDay(b, selectedDate, today));
 
   return (
     <div className="shell-b">
@@ -295,11 +321,12 @@ export function TogiAppB() {
       <main className="content-b">
         {tab === "today" && (
           <div className="content-today">
-            {coach.state === "pending" && <TodayCheckin onSubmit={(input) => handleCapture(PINNED_CTX, input)} />}
-            {banner && <InsightBanner data={insight} onApply={() => setCapture({ context: planCtx(), plan: true })} onDismiss={() => setBanner(false)} />}
+            {coach.state === "pending" && isToday && <TodayCheckin onSubmit={(input) => handleCapture(PINNED_CTX, input)} />}
+            {banner && <InsightBanner data={bannerInsight} onApply={() => setCapture({ context: planCtx(), plan: true })} onDismiss={() => setBanner(false)} />}
             <div className="content-cal">
-              <DayCalendar view={view} setView={setView} real={real} plan={plan} density="regular"
-                onPlanDay={() => setCapture({ context: planCtx(), plan: true })}
+              <DayCalendar view={view} setView={setView} real={realForDay} plan={planForDay} now={nowMin} selectedDate={selectedDate} density="regular"
+                onSelectDay={(key: string) => setSelectedDate(key)}
+                onPlanDay={(key: string) => { setSelectedDate(key); setCapture({ context: planCtx(), plan: true }); }}
                 onSelfCheckin={(label: string) => setCapture({ context: selfCtx(label) })}
                 onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })}
                 onEditBlock={calConnected ? (b: PlanBlock) => setGcalEditor({ block: b }) : undefined} />

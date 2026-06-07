@@ -53,6 +53,7 @@ export const CATEGORIES: Record<string, { key: string; label: string; color: str
 
 export interface PlanBlock {
   id: string; domain: Domain; project?: string | null; activity: string; title: string; note?: string; start: number; end: number;
+  date?: string; // YYYY-MM-DD; undated = today (demo seed)
   // Set when the block originates from Google Calendar (enables write-back editing).
   source?: "gcal"; gcalId?: string; startISO?: string; endISO?: string;
 }
@@ -81,6 +82,7 @@ export interface RealEntry {
   end?: number;
   live?: boolean;
   confidence?: number;
+  date?: string; // YYYY-MM-DD; undated = today (demo seed)
 }
 
 // r4 (Formula v3 doc) deliberately omitted — the live check-in fills it.
