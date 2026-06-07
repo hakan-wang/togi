@@ -57,7 +57,7 @@ struct LoginView: View {
             .buttonStyle(.borderedProminent)
             .disabled(!canSubmit)
 
-            Button("Need an account? Subscribe on the website", action: openWebsite)
+            Button("Need an account? Create on the website", action: openWebsite)
                 .buttonStyle(.link)
                 .font(.caption)
         }

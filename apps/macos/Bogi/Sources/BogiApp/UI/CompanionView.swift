@@ -18,6 +18,9 @@ struct CompanionView: View {
     var onHeightChange: (CGFloat) -> Void = { _ in }
     var onSettings: () -> Void = {}
     var onClose: () -> Void = {}
+    /// Resets the agent's conversation thread when the user clears the chat, so it forgets the
+    /// prior exchange. The visible transcript is cleared separately via `.companionClearChat`.
+    var onClearChat: () -> Void = {}
     /// Pre-seeded transcript for previews and the screenshot demo hook. Empty in the real app.
     var seedMessages: [(role: String, text: String)] = []
     /// Hands-free voice scheduling, forwarded to the chat composer. nil in previews/demo.
@@ -25,6 +28,8 @@ struct CompanionView: View {
 
     @State private var page: Page = .chat
     @State private var period: DashboardPeriod = .day
+    /// Whether the chat holds any messages — drives the "clear chat" button's visibility.
+    @State private var chatHasMessages = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,6 +74,14 @@ struct CompanionView: View {
             iconButton("gearshape.fill", active: page == .settings) {
                 withAnimation(.easeInOut(duration: 0.22)) { page = .settings }
             }
+            // Clear chat: only on the chat page, only once there's something to clear. Wipes the
+            // transcript (via notification) and rotates the agent's thread (via onClearChat).
+            if page == .chat, chatHasMessages {
+                iconButton("trash", active: false) {
+                    onClearChat()
+                    NotificationCenter.default.post(name: .companionClearChat, object: nil)
+                }
+            }
             iconButton("xmark", active: false, action: onClose)
         }
         .padding(.horizontal, 14)
@@ -98,7 +111,8 @@ struct CompanionView: View {
                 suggest: suggest,
                 transcriptMaxHeight: max(160, maxContentHeight - 140),
                 seedMessages: seedMessages,
-                voice: voice
+                voice: voice,
+                onHasMessagesChange: { chatHasMessages = $0 }
             )
             .transition(.opacity.combined(with: .move(edge: .leading)))
         case .dashboard:

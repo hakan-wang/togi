@@ -22,6 +22,9 @@ struct CoachView: View {
     /// Hands-free voice scheduling. Injected by the host; nil in previews/demo, where the mic
     /// button and the voice strip are simply hidden.
     var voice: VoiceSession? = nil
+    /// Reports whether the transcript currently holds any messages, so the host can show or
+    /// hide the "clear chat" control. Fires on appear and whenever the count crosses empty.
+    var onHasMessagesChange: (Bool) -> Void = { _ in }
 
     @State private var messages: [(role: String, text: String)] = []
     @State private var input: String = ""
@@ -49,16 +52,26 @@ struct CoachView: View {
         .onAppear {
             if messages.isEmpty, !seedMessages.isEmpty { messages = seedMessages }
             if suggestions.isEmpty { suggestions = suggest() }
+            onHasMessagesChange(!messages.isEmpty)
             // Land the cursor in the field so you can type the moment the card appears.
             DispatchQueue.main.async { inputFocused = true }
         }
-        // Each time the panel is shown, reset to a fresh, small chat (in place, no remount,
-        // so the height machinery keeps working) with openers recomputed from the latest data.
+        .onChange(of: messages.isEmpty) { _, isEmpty in onHasMessagesChange(!isEmpty) }
+        // The conversation now persists across opens (the panel is reused), so reopening keeps
+        // the transcript and the agent's thread. On each open just refresh the empty-state
+        // openers (the underlying numbers may have changed) and land the cursor in the field.
         .onReceive(NotificationCenter.default.publisher(for: .companionDidOpen)) { _ in
+            suggestions = suggest()
+            DispatchQueue.main.async { inputFocused = true }
+        }
+        // Explicit "clear chat": wipe the visible transcript and refresh openers. The agent's
+        // conversation thread is rotated separately by the host, so it forgets this chat too;
+        // the tracked-time database is untouched.
+        .onReceive(NotificationCenter.default.publisher(for: .companionClearChat)) { _ in
             input = ""
             errorText = nil
             sending = false
-            messages = seedMessages
+            messages = []
             suggestions = suggest()
             DispatchQueue.main.async { inputFocused = true }
         }

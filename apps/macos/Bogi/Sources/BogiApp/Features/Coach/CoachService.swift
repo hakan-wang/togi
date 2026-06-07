@@ -21,11 +21,21 @@ extension SidecarClient: CoachBackend {}
 /// (sidecar); this type just carries the question to it on a stable conversation thread.
 final class CoachService {
     private let backend: CoachBackend
-    private let threadId: String
+    /// The conversation thread the agent keys its memory on. Rotated by `clearConversation()`
+    /// so "clear chat" makes the agent forget the prior exchange while its data tools (the
+    /// tracked-time database, calendar) keep working unchanged.
+    private var threadId: String
 
     init(backend: CoachBackend, threadId: String = "coach") {
         self.backend = backend
         self.threadId = threadId
+    }
+
+    /// Start a fresh conversation: rotate to a new, unique thread id. The agent's in-memory
+    /// checkpointer has no history for the new id, so it no longer references the cleared chat.
+    /// Nothing in the database is touched — only the conversation memory resets.
+    func clearConversation() {
+        threadId = "coach-\(UUID().uuidString)"
     }
 
     func ask(_ question: String) async throws -> String {

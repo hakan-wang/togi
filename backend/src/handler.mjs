@@ -89,16 +89,58 @@ export function buildAccountStatus({ paid, plan, userId }) {
   return { paid, plan, userId };
 }
 
-// Paid-only access decision. Pure + exported for tests.
-export function subscriptionGate(paid) {
-  if (!paid) return { allow: false, status: 403, body: { error: "subscription_required" } };
-  return { allow: true };
-}
-
 // Static liveness body. authDisabled is surfaced so a wide-open (dev) deploy is obvious
 // from a health check. Exported pure for tests.
 export function buildHealthz({ authDisabled }) {
   return { ok: true, model: MODEL_ID, region: REGION, authDisabled };
+}
+
+// --- Abuse rate limiting (in-memory, per-instance) ---
+//
+// There is no subscription gate anymore; inference is open to any signed-in user. To keep a
+// single runaway/abusive client from running up the Bedrock bill, /v1/infer is capped per
+// user id with a per-minute burst limit and a per-day limit. The counters live in this Lambda
+// container's memory only — no DB, no added latency. That makes the limits APPROXIMATE (each
+// warm container counts independently, and state resets on cold start), which is fine for an
+// abuse backstop rather than a precise quota. Env-overridable for tuning.
+const RL_PER_MIN = Number(process.env.RL_PER_MIN) || 60;
+const RL_PER_DAY = Number(process.env.RL_PER_DAY) || 1000;
+const RL_MAX_KEYS = 50_000; // bound memory in a long-lived warm container
+const rlBuckets = new Map(); // userId -> { minWindow, minCount, dayWindow, dayCount }
+
+// Pure rate-limit step: given the prior record (or undefined), the current time in ms, and the
+// limits, return the updated record plus whether the request is allowed (with a Retry-After in
+// seconds when blocked). Fixed windows keyed by minute/day index. Exported for tests.
+export function rateLimitStep(prev, nowMs, { perMin = RL_PER_MIN, perDay = RL_PER_DAY } = {}) {
+  const minWindow = Math.floor(nowMs / 60_000);
+  const dayWindow = Math.floor(nowMs / 86_400_000);
+  const rec = {
+    minWindow,
+    minCount: prev && prev.minWindow === minWindow ? prev.minCount : 0,
+    dayWindow,
+    dayCount: prev && prev.dayWindow === dayWindow ? prev.dayCount : 0,
+  };
+  const nowSec = Math.floor(nowMs / 1000);
+  if (rec.dayCount >= perDay) {
+    return { allow: false, scope: "day", retryAfter: (dayWindow + 1) * 86_400 - nowSec, rec };
+  }
+  if (rec.minCount >= perMin) {
+    return { allow: false, scope: "minute", retryAfter: (minWindow + 1) * 60 - nowSec, rec };
+  }
+  rec.minCount += 1;
+  rec.dayCount += 1;
+  return { allow: true, rec };
+}
+
+// Apply the limiter to a user id against this container's buckets. Returns the same shape as
+// rateLimitStep and persists the updated record.
+function checkRateLimit(userId, nowMs = Date.now()) {
+  // Opportunistically drop the whole table if it grows unbounded (distinct users on one warm
+  // container). Cheap and safe: at worst a few users get a fresh window.
+  if (rlBuckets.size > RL_MAX_KEYS) rlBuckets.clear();
+  const step = rateLimitStep(rlBuckets.get(userId), nowMs);
+  rlBuckets.set(userId, step.rec);
+  return step;
 }
 
 // True when the caller asked for the deep (Bedrock-pinging) probe via ?deep=1.
@@ -122,15 +164,23 @@ async function healthz(event) {
   return json(200, { ...base, bedrock: text.trim() });
 }
 
-// --- /v1/infer (auth + subscription gated) ---
+// --- /v1/infer (auth gated; no subscription required) ---
 
 async function infer(event) {
   const user = await authUser(event);
   if (!user) return json(401, { error: "unauthorized" });
 
+  // Abuse backstop (no subscription gate; just stop a runaway client). 429 + Retry-After.
+  const rl = checkRateLimit(user.id);
+  if (!rl.allow) {
+    return {
+      statusCode: 429,
+      headers: { "content-type": "application/json", "retry-after": String(rl.retryAfter) },
+      body: JSON.stringify({ error: "rate_limited", scope: rl.scope, retryAfter: rl.retryAfter }),
+    };
+  }
+
   const { paid } = await fetchProfile(user.id);
-  const gate = subscriptionGate(paid);
-  if (!gate.allow) return json(gate.status, gate.body);
 
   const body = parseBody(event);
   if (!body?.messages?.length) return json(400, { error: "messages_required" });

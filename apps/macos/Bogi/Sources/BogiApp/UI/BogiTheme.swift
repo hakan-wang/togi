@@ -28,6 +28,36 @@ enum BogiGradient {
 /// The mascot IS the logo: the baby-blue plush axolotl. Loaded from the bundled asset,
 /// with an SF Symbol fallback so the UI never breaks if the resource is missing.
 enum BogiAsset {
+    /// Locate the SwiftPM resource bundle by searching real, on-disk locations.
+    ///
+    /// We deliberately AVOID SwiftPM's generated `Bundle.module` accessor: for an executable
+    /// wrapped into a `.app`, it only checks `Togi.app/Bogi_BogiApp.bundle` (the bundle root,
+    /// where the bundle is NOT placed) and a hard-coded absolute dev build path — then calls
+    /// `fatalError`. That dev path exists only on the build machine, so the packaged app
+    /// crashed on launch for every other machine (DMG / /Applications / Gatekeeper
+    /// translocation). This returns `nil` instead of crashing.
+    static func locateResourceBundle(searchURLs: [URL],
+                                     bundleName: String = "Bogi_BogiApp.bundle") -> Bundle? {
+        for base in searchURLs {
+            let url = base.appendingPathComponent(bundleName)
+            if FileManager.default.fileExists(atPath: url.path), let bundle = Bundle(url: url) {
+                return bundle
+            }
+        }
+        return nil
+    }
+
+    /// The bundle holding `mascot.png`. `build-app.sh` places `Bogi_BogiApp.bundle` in
+    /// `Contents/Resources`; in dev (`swift run`/tests) it sits next to the executable.
+    private static let resourceBundle: Bundle = {
+        let candidates = [
+            Bundle.main.resourceURL,                                   // Contents/Resources (packaged)
+            Bundle.main.executableURL?.deletingLastPathComponent(),    // Contents/MacOS / dev build dir
+            Bundle.main.bundleURL,                                     // .app root
+        ].compactMap { $0 }
+        return locateResourceBundle(searchURLs: candidates) ?? .main
+    }()
+
     static let mascot: Image = {
         if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
            let image = NSImage(contentsOf: url) {

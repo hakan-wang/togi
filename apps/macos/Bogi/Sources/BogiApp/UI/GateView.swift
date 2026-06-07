@@ -6,7 +6,6 @@ struct GateView: View {
     let state: GateState
     let signIn: (String, String) async throws -> Void
     let openWebsite: () -> Void
-    let onSubscribe: () -> Void
     let onRecheck: () -> Void
     let onSignOut: () -> Void
 
@@ -21,8 +20,6 @@ struct GateView: View {
             .padding(40).frame(width: 340)
         case .needsLogin:
             LoginView(signIn: signIn, openWebsite: openWebsite)
-        case .needsSubscription:
-            PaywallView(onSubscribe: onSubscribe, onRecheck: onRecheck, onSignOut: onSignOut)
         case .blocked:
             VStack(spacing: 14) {
                 BogiAsset.mascot.resizable().scaledToFit().frame(width: 48, height: 48)

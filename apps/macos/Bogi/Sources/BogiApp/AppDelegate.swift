@@ -193,11 +193,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var voiceHotkey: VoiceHotkeyMonitor?
     private var voiceCancellables: Set<AnyCancellable> = []
     private var gateWindow: NSWindow?
+    private var gateHosting: NSHostingController<GateView>?
     private lazy var gate = GateController(auth: appState.auth, gate: appState.accountGate)
     private var gateObservation: AnyCancellable?
+    private var surfaceObserver: NSObjectProtocol?
     private var mainExperienceStarted = false
 
     override init() {
+        // Enforce a single running Togi before touching any shared resource (DB, sidecar).
+        // A duplicate launch surfaces the existing instance and quits itself.
+        if !SingleInstanceGuard.isTestOrDemoEnvironment(), !SingleInstanceGuard.acquire() {
+            SingleInstanceGuard.surfaceExistingInstanceAndExit()  // never returns
+        }
+
         let db: DatabaseService
         let path = DatabaseService.defaultPath()
         var dbPath = path
@@ -237,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Gate the whole app on a signed-in, subscribed user (strict online check).
+        // Gate the whole app on a signed-in user (strict online check). No subscription needed.
         gateObservation = gate.$state
             .receive(on: RunLoop.main)
             .sink { [weak self] state in self?.applyGateState(state) }
@@ -254,12 +262,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .unlocked:
             gateWindow?.orderOut(nil)
             gateWindow = nil
+            gateHosting = nil
             startMainExperienceIfNeeded()
         case .checking:
             // Initial launch shows a "checking" window; once the app is running, a transient
             // re-check (e.g. on activation) must not flash a window over the live UI.
             if !mainExperienceStarted { showGateWindow(for: .checking) }
-        case .needsLogin, .needsSubscription, .blocked:
+        case .needsLogin, .blocked:
             showGateWindow(for: state)
         }
     }
@@ -272,31 +281,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try await self.gate.signIn(email: email, password: pw)
             },
             openWebsite: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
-            onSubscribe: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
             onRecheck: { [weak self] in Task { await self?.gate.refresh() } },
             onSignOut: { [weak self] in self?.gate.signOut() }
         )
-        if let win = gateWindow {
-            win.contentViewController = NSHostingController(rootView: view)
+        // Reuse a SINGLE hosting controller + window for the whole gate lifecycle, updating
+        // `rootView` as the state changes. Replacing `contentViewController` on every state
+        // change (and letting the hosting controller drive the window size as content height
+        // changed) caused an Auto Layout feedback loop — AppKit aborts with an uncaught
+        // NSGenericException ("more Update Constraints in Window passes than there are views").
+        // `sizingOptions = []` stops SwiftUI from resizing the window, and a fixed content size
+        // big enough for every gate state (login / paywall / blocked / checking) avoids resizing.
+        if let hosting = gateHosting {
+            hosting.rootView = view
         } else {
-            // Build the window with its final style mask up front. Previously this used
-            // NSWindow(contentViewController:) — which yields a .resizable window — and then
-            // mutated styleMask to [.titled]. Changing the style mask while the hosting
-            // controller is still establishing its content-size constraints drove AppKit into
-            // an endless Update-Constraints-in-Window loop, throwing an NSException (SIGTRAP)
-            // that crashed the app on launch. Creating the titled (non-closable) window once,
-            // then attaching the hosting controller, avoids the feedback loop.
-            let win = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 340, height: 420),
-                styleMask: [.titled],
-                backing: .buffered,
-                defer: false
-            )
-            win.contentViewController = NSHostingController(rootView: view)
+            // Reuse a single hosting controller; `sizingOptions = []` stops SwiftUI from
+            // resizing the window (the Auto Layout feedback loop that aborted AppKit on launch),
+            // and a fixed content size below covers every gate state.
+            let hosting = NSHostingController(rootView: view)
+            hosting.sizingOptions = []
+            let win = NSWindow(contentViewController: hosting)
+            win.styleMask = [.titled]
             win.title = "Togi"
             win.isReleasedWhenClosed = false
+            win.setContentSize(NSSize(width: 360, height: 460))
             win.center()
             gateWindow = win
+            gateHosting = hosting
         }
         NSApp.activate(ignoringOtherApps: true)
         gateWindow?.makeKeyAndOrderFront(nil)
@@ -343,9 +353,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startMainExperience() {
         // First launch: opt into launch-at-login so Togi reappears every login with no setup.
-        // Gated behind unlock so we only auto-launch for real (subscribed) users, not someone
-        // who opened the app once and hit the paywall. Only on the very first unlocked run
-        // (no stored preference) — respect later changes.
+        // Gated behind unlock so we only auto-launch for real (signed-in) users, not someone
+        // who opened the app once and bounced off the login screen. Only on the very first
+        // unlocked run (no stored preference) — respect later changes.
         if appState.settings.string("launch_at_login") == nil {
             appState.launchAtLogin = true
         }
@@ -484,6 +494,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         scheduler.start()
         calmScheduler = scheduler
+
+        // When a user accidentally launches a second Togi, that duplicate posts this
+        // notification (then quits). Surface the companion so it's clear Togi is running.
+        surfaceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: SingleInstanceGuard.surfaceNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showCompanion() }
+        }
     }
 
     private func applyNudge(_ decision: NudgeDecision, onTask: Bool) {
@@ -570,6 +588,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onHeightChange: reportHeight,
                 onSettings: { AppDelegate.openSettings() },
                 onClose: { [weak self] in self?.companion?.orderOut(nil) },
+                onClearChat: { state.coach.clearConversation() },
                 seedMessages: seed,
                 voice: state.voice
             )

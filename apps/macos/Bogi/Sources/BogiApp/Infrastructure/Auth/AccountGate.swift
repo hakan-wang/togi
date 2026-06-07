@@ -1,22 +1,18 @@
 import Foundation
 
-/// The four states the subscription gate can resolve to. `unreachable` is distinct from
-/// `notSubscribed` so the app can show a Retry screen (strict online check) rather than
-/// wrongly telling a paying user to subscribe when the network is down.
+/// The states the login gate can resolve to. `unreachable` is distinct from `signedOut` so the
+/// app can show a Retry screen (strict online check) rather than wrongly bouncing a signed-in
+/// user back to login when the network is down.
 enum GateOutcome: Equatable {
-    case subscribed
-    case notSubscribed
+    case signedIn
     case signedOut
     case unreachable
 }
 
-/// Checks subscription status against the backend. Togi is subscription-first: only signed-in
-/// users with an active subscription may use the app.
+/// Checks sign-in status against the backend. Togi requires a signed-in account, but no
+/// subscription — any signed-in user gets in.
 final class AccountGate {
     typealias Transport = (URLRequest) async throws -> (Data, URLResponse)
-
-    // Mirrors GET /v1/account/status. Server field is "paid".
-    struct Status: Decodable { let paid: Bool; let plan: String? }
 
     private let baseURL: URL
     private let tokenProvider: () async -> String?
@@ -45,12 +41,11 @@ final class AccountGate {
         var req = URLRequest(url: baseURL.appendingPathComponent("v1/account/status"))
         req.setValue("Bearer \(token)", forHTTPHeaderField: "X-Bogi-Authorization")
         do {
-            let (data, resp) = try await transport(req)
+            let (_, resp) = try await transport(req)
             guard let http = resp as? HTTPURLResponse else { return .unreachable }
             switch http.statusCode {
             case 200:
-                guard let status = try? JSONDecoder().decode(Status.self, from: data) else { return .unreachable }
-                return status.paid ? .subscribed : .notSubscribed
+                return .signedIn
             case 401:
                 return .signedOut
             default:
