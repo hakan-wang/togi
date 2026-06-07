@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Gate the whole app on a signed-in, subscribed user (strict online check).
+        // Gate the whole app on a signed-in user (strict online check). No subscription needed.
         gateObservation = gate.$state
             .receive(on: RunLoop.main)
             .sink { [weak self] state in self?.applyGateState(state) }
@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Initial launch shows a "checking" window; once the app is running, a transient
             // re-check (e.g. on activation) must not flash a window over the live UI.
             if !mainExperienceStarted { showGateWindow(for: .checking) }
-        case .needsLogin, .needsSubscription, .blocked:
+        case .needsLogin, .blocked:
             showGateWindow(for: state)
         }
     }
@@ -254,7 +254,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try await self.gate.signIn(email: email, password: pw)
             },
             openWebsite: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
-            onSubscribe: { NSWorkspace.shared.open(WebsiteConfig.pricingURL) },
             onRecheck: { [weak self] in Task { await self?.gate.refresh() } },
             onSignOut: { [weak self] in self?.gate.signOut() }
         )
@@ -293,9 +292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startMainExperience() {
         // First launch: opt into launch-at-login so Togi reappears every login with no setup.
-        // Gated behind unlock so we only auto-launch for real (subscribed) users, not someone
-        // who opened the app once and hit the paywall. Only on the very first unlocked run
-        // (no stored preference) — respect later changes.
+        // Gated behind unlock so we only auto-launch for real (signed-in) users, not someone
+        // who opened the app once and bounced off the login screen. Only on the very first
+        // unlocked run (no stored preference) — respect later changes.
         if appState.settings.string("launch_at_login") == nil {
             appState.launchAtLogin = true
         }

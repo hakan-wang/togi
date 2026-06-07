@@ -20,16 +20,10 @@ final class AccountGateTests: XCTestCase {
         XCTAssertEqual(out, .signedOut)
     }
 
-    func testSubscribedWhenPaidTrue() async {
-        let g = gate(token: "t") { [self] _ in http(200, #"{"paid":true,"plan":"pro"}"#) }
-        let out = await g.check()
-        XCTAssertEqual(out, .subscribed)
-    }
-
-    func testNotSubscribedWhenPaidFalse() async {
+    func testSignedInOn200() async {
         let g = gate(token: "t") { [self] _ in http(200, #"{"paid":false,"plan":null}"#) }
         let out = await g.check()
-        XCTAssertEqual(out, .notSubscribed)
+        XCTAssertEqual(out, .signedIn)
     }
 
     func testSignedOutOn401() async {

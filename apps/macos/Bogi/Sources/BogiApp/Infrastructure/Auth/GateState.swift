@@ -5,16 +5,14 @@ import Foundation
 enum GateState: Equatable {
     case checking
     case needsLogin
-    case needsSubscription
-    case blocked          // signed in + subscribed unknown (offline / server error)
+    case blocked          // signed in unknown (offline / server error)
     case unlocked
 
     init(for outcome: GateOutcome) {
         switch outcome {
-        case .subscribed:    self = .unlocked
-        case .notSubscribed: self = .needsSubscription
-        case .signedOut:     self = .needsLogin
-        case .unreachable:   self = .blocked
+        case .signedIn:    self = .unlocked
+        case .signedOut:   self = .needsLogin
+        case .unreachable: self = .blocked
         }
     }
 }

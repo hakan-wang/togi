@@ -3,8 +3,7 @@ import XCTest
 
 final class GateStateTests: XCTestCase {
     func testMapping() {
-        XCTAssertEqual(GateState(for: .subscribed), .unlocked)
-        XCTAssertEqual(GateState(for: .notSubscribed), .needsSubscription)
+        XCTAssertEqual(GateState(for: .signedIn), .unlocked)
         XCTAssertEqual(GateState(for: .signedOut), .needsLogin)
         XCTAssertEqual(GateState(for: .unreachable), .blocked)
     }
