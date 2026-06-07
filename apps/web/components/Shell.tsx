@@ -11,7 +11,7 @@ import { dayKey, nowMinutes, onDay } from "../lib/dates";
 import { loadFacts } from "../lib/userFacts";
 import { transcribeAudio, categorizeText } from "../lib/capture";
 import { computeInsight, BannerInsight } from "../lib/insights";
-import { parseTimeRange } from "../lib/planparse";
+import { parseTimeRange, parseDuration, guessPlanMeta, cleanTitle } from "../lib/planparse";
 import { advisePlan } from "../lib/planAdvisor";
 import { loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
 import { computeStats, seedHistory } from "../lib/behavior";
@@ -191,13 +191,14 @@ export function TogiAppB() {
 
   // ---- THE PIPELINE (any entry point) ----
   async function handleCapture(ctx: CapContext, input: CheckinInput): Promise<CheckinResult> {
-    let utterance = (input.text || "").trim();
-    if (input.clarifyAnswer && input.draftText) utterance = `${input.draftText}. ${input.clarifyAnswer}`.trim();
-    if (!utterance && input.blob) utterance = await transcribeAudio(input.blob);
-    if (!utterance) throw new Error("Didn’t catch that — try again, or type instead.");
+    let base = (input.text || "").trim();
+    if (!base && input.blob) base = await transcribeAudio(input.blob);
+    if (!base) throw new Error("Didn’t catch that — try again, or type instead.");
+    const isAnswer = !!input.draftText;
+    const utterance = isAnswer ? `${input.draftText}. ${base}`.trim() : base;
 
     const r = await categorizeText(utterance, { block: ctx.title, planId: ctx.planId, window: ctx.window, kind: ctx.kind }, vocab);
-    if (!input.clarifyAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
+    if (!isAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
 
     const matchedPlanId = r.matched && ctx.planId ? ctx.planId : null;
     const entry = placeLive({
@@ -219,20 +220,20 @@ export function TogiAppB() {
 
   // ---- PLANNING (adds a categorized block to the Plan timeline) ----
   async function handlePlan(ctx: CapContext, input: CheckinInput): Promise<CheckinResult> {
-    let utterance = (input.text || "").trim();
-    if (input.clarifyAnswer && input.draftText) utterance = `${input.draftText}. ${input.clarifyAnswer}`.trim();
-    if (!utterance && input.blob) utterance = await transcribeAudio(input.blob);
-    if (!utterance) throw new Error("Didn’t catch that — try again, or type instead.");
+    let base = (input.text || "").trim();
+    if (!base && input.blob) base = await transcribeAudio(input.blob);
+    if (!base) throw new Error("Didn’t catch that — try again, or type instead.");
+    const isAnswer = !!input.draftText;
+    const utterance = isAnswer ? `${input.draftText}. ${base}`.trim() : base;
 
-    const r = await categorizeText(utterance, { kind: "plan" }, vocab);
-    const tr = parseTimeRange(utterance, r.durationMin);
-    // coach for specificity: need a concrete time, and a confident activity
-    if (!input.clarifyAnswer && (!tr || r.confidence < 0.6)) {
-      return { status: "clarify", question: !tr ? "When, and for how long? Give me a concrete time." : (r.clarify_question || "What exactly? Be specific so I can check it later."), draftText: utterance };
-    }
+    // Plans are NOT force-categorized (only real check-ins are): just need a title + time.
+    const tr = parseTimeRange(utterance, parseDuration(utterance));
+    if (!isAnswer && !tr) return { status: "clarify", question: "When, and for how long?", draftText: utterance };
+
     const facts = loadFacts();
-    const range = tr || { start: facts.wakeMin + 120, end: facts.wakeMin + 120 + (r.durationMin || 60) };
-    let block: PlanBlock = { id: `plan-${Date.now()}`, date: selectedDate, domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note || undefined, start: range.start, end: range.end };
+    const range = tr || { start: facts.wakeMin + 120, end: facts.wakeMin + 120 + (parseDuration(utterance) || 60) };
+    const g = guessPlanMeta(utterance);
+    let block: PlanBlock = { id: `plan-${Date.now()}`, date: selectedDate, domain: g.domain, project: null, activity: g.activity, title: cleanTitle(isAnswer ? input.draftText! : base), start: range.start, end: range.end };
     // Close the loop: Togi consults the behavioral memory, may move/pad the block, explains why.
     const adv = advisePlan(block, surfaced(loadMemory()));
     block = adv.block;
@@ -240,13 +241,11 @@ export function TogiAppB() {
     let wakeNote = "";
     if (block.start < facts.wakeMin) { const d = block.end - block.start; block = { ...block, start: facts.wakeMin, end: Math.min(DAY_END, facts.wakeMin + d) }; wakeNote = `kept it after your usual ${fmt(facts.wakeMin)} start`; }
     const reasonAll = [adv.reason, wakeNote].filter(Boolean).join(", and ");
-    if (reasonAll) block.note = (block.note ? block.note + " · " : "") + `Togi: ${reasonAll}`;
+    if (reasonAll) block.note = `Togi: ${reasonAll}`;
     const nextPlan = [...plan, block];
     setPlan(nextPlan); setTab("today"); setView("plan");
     savePlanLocal(nextPlan.filter((b) => b.id.startsWith("plan-")));
-    if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
-    if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
-    logged(`Planned: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity} · ${fmt(block.start)}–${fmt(block.end)}${reasonAll ? " — " + reasonAll : ""}`);
+    logged(`Planned: ${block.title} · ${fmt(block.start)}–${fmt(block.end)}${reasonAll ? " — " + reasonAll : ""}`);
     return { status: "done" };
   }
 
@@ -318,13 +317,23 @@ export function TogiAppB() {
   const planForDay = plan.filter((b) => onDay(b, selectedDate, today));
   const realForDay = real.filter((b) => onDay(b, selectedDate, today));
 
+  // Real-time check-in: the most-recently-ended plan block TODAY, not yet logged.
+  // (A 2-min check-in falls out the end of every block — nothing shows until one ends.)
+  const doneSlots = new Set(real.filter((r) => r.live && r.slot).map((r) => r.slot));
+  const dueBlock = plan
+    .filter((b) => onDay(b, today, today) && b.end <= nowMin && !doneSlots.has(b.id))
+    .sort((a, b) => b.end - a.end)[0];
+  const dueCtx: CapContext | null = dueBlock
+    ? { title: dueBlock.title, domain: dueBlock.domain, window: `${fmt(dueBlock.start)}–${fmt(dueBlock.end)}`, planId: dueBlock.id, mins: 2, kind: "checkin", prompt: `“${dueBlock.title}” just ended — tell Togi what really happened.` }
+    : null;
+
   return (
     <div className="shell-b">
       <SidebarB tab={tab} setTab={setTab} collapsed={collapsed} setCollapsed={setCollapsed} onTalk={() => openSession("ask")} />
       <main className="content-b">
         {tab === "today" && (
           <div className="content-today">
-            {coach.state === "pending" && isToday && <TodayCheckin onSubmit={(input) => handleCapture(PINNED_CTX, input)} />}
+            {isToday && dueCtx && <TodayCheckin context={dueCtx} onSubmit={(input) => handleCapture(dueCtx, input)} />}
             {banner && <InsightBanner data={bannerInsight} onApply={() => setCapture({ context: planCtx(), plan: true })} onDismiss={() => setBanner(false)} />}
             <div className="content-cal">
               <DayCalendar view={view} setView={setView} real={realForDay} plan={planForDay} now={nowMin} selectedDate={selectedDate} density="regular"

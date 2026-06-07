@@ -3,7 +3,47 @@
    intention becomes a concrete calendar block. Best-effort; if no time is found,
    the planning flow asks the user ("when, and how long?").
    ============================================================ */
-import { DAY_START, DAY_END } from "./data";
+import { DAY_START, DAY_END, Domain } from "./data";
+
+/** Minutes of duration mentioned in text ("2 hours", "45 min"), or null. */
+export function parseDuration(text: string): number | null {
+  const h = text.match(/(\d+(?:\.\d+)?)\s*(h\b|hour|hr|tim)/i);
+  const m = text.match(/(\d+)\s*(m\b|min)/i);
+  let mins = 0;
+  if (h) mins += Math.round(parseFloat(h[1]) * 60);
+  if (m) mins += parseInt(m[1], 10);
+  return mins || null;
+}
+
+/** Light, local domain/activity guess for a PLANNED block (no LLM — plans aren't
+   force-categorized; only real check-ins get the full categorizer). */
+export function guessPlanMeta(text: string): { domain: Domain; activity: string } {
+  const KW: Array<[RegExp, Domain, string]> = [
+    [/gym|run|workout|train|lift|yoga|walk|sport|padel/i, "Health", "Gym"],
+    [/edit|vlog|film|render|footage/i, "Work", "Editing"],
+    [/email|mail|inbox|supplier|reply/i, "Work", "Email"],
+    [/writ|doc|formula|draft|essay|report/i, "Work", "Writing"],
+    [/meet|call|standup|sync/i, "Work", "Meeting"],
+    [/stud|exam|homework|revis|lecture|class|read/i, "Study", "Studying"],
+    [/clean|laundry|dishes|errand|shop|grocery|post office|bank|pickup/i, "Errands & life admin", "Errands"],
+    [/friend|dinner|cinema|party|hang|family|date|concert|visit/i, "Social", "Hanging out"],
+    [/game|movie|relax|rest|hobby/i, "Leisure", "Resting"],
+  ];
+  for (const [re, d, a] of KW) if (re.test(text)) return { domain: d, activity: a };
+  return { domain: "Work", activity: "Planned" };
+}
+
+/** A short, clean block title from a spoken intention (strips the time phrases). */
+export function cleanTitle(text: string): string {
+  let t = text
+    .replace(/\bat\s+\d{1,2}([:.]\d{2})?\s*(am|pm)?\b/gi, " ")
+    .replace(/\bfor\s+\d+(?:\.\d+)?\s*(h\b|hours?|hrs?|min(ute)?s?)\b/gi, " ")
+    .replace(/\b(tomorrow|today|tonight|this (morning|afternoon|evening)|in the (morning|afternoon|evening)|(early )?morning|afternoon|evening|noon)\b/gi, " ")
+    .replace(/\bfor\s+\d+\b/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  if (!t) t = text.trim();
+  return t.charAt(0).toUpperCase() + t.slice(1, 60);
+}
 
 const PARTS: Array<[RegExp, number]> = [
   [/\bearly morning\b/i, 7 * 60],

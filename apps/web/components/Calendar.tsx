@@ -50,12 +50,10 @@ function BlockEl({ top, height, domain, title, project, note, time, layer, tag, 
           {tag === "unplanned" && <span className="blk-unplanned">unplanned</span>}
           {live && <span className="blk-unplanned">just logged</span>}
         </div>
-        {!tiny && (
-          <div className="blk-meta">
-            <span className="blk-time num">{time}</span>
-            {note && <span className="blk-sub">{note}</span>}
-          </div>
-        )}
+        <div className="blk-meta">
+          <span className="blk-time num">{time}</span>
+          {!tiny && note && <span className="blk-sub">{note}</span>}
+        </div>
       </div>
     </div>
   );
@@ -163,7 +161,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
     const r = trackRef.current!.getBoundingClientRect();
     setListen({ x: clientX - r.left, y: clientY - r.top, label, fn });
   };
-  const onBlock = (e: React.MouseEvent, b: any, label: string) => { e.stopPropagation(); talkAt(e.clientX, e.clientY, label, () => onTalkBlock(b)); };
+  const onBlock = (e: React.MouseEvent, b: any) => { e.stopPropagation(); onTalkBlock(b); };
 
   useEffect(() => {
     if (!listen) return;
@@ -181,8 +179,8 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       const y1 = ev.clientY - r.top; setDrag(null);
-      if (moved && Math.abs(y1 - y0) > 10) { const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1)); talkAt(ev.clientX, ev.clientY, `${fmt(a)}–${fmt(b)}`, () => onSelfCheckin(`${fmt(a)}–${fmt(b)}`)); }
-      else { const t = mOf(y0); talkAt(ev.clientX, ev.clientY, `around ${fmt(t)}`, () => onSelfCheckin(`around ${fmt(t)}`)); }
+      if (moved && Math.abs(y1 - y0) > 10) { const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1)); onSelfCheckin(`${fmt(a)}–${fmt(b)}`); }
+      else { const t = mOf(y0); onSelfCheckin(`around ${fmt(t)}`); }
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
@@ -235,7 +233,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
                   <BlockEl key={p.id} layer="plan" top={yOf(p.start)} height={yOf(p.end) - yOf(p.start)}
                     domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`}
                     editable={p.source === "gcal" && !!onEditBlock} onEdit={(e: any) => { e.stopPropagation(); onEditBlock(p); }}
-                    onClick={(e: any) => onBlock(e, p, p.title)} />
+                    onClick={(e: any) => onBlock(e, p)} />
                 ))}
               </div>
               <div className="real-layer">
@@ -247,7 +245,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
                   return (
                     <div key={r.id} className={"real-pos" + (p ? " aligned" : "")} style={{ position: "absolute", top: yOf(s), left: 0, right: 0, height: yOf(e2) - yOf(s) }}>
                       <BlockEl layer="real" top={0} height={yOf(e2) - yOf(s)} domain={r.domain} title={r.title} project={r.project} note={r.note}
-                        time={`${fmt(s)}–${fmt(e2)}`} tag={tag} live={r.live} onClick={(ev: any) => onBlock(ev, { ...r, start: s, end: e2 }, r.title)} />
+                        time={`${fmt(s)}–${fmt(e2)}`} tag={tag} live={r.live} onClick={(ev: any) => onBlock(ev, { ...r, start: s, end: e2 })} />
                     </div>
                   );
                 })}
