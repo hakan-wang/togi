@@ -423,7 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run { journal.setStatus(id: id, status: status); return true }
             },
             goalExists: { id in
-                await MainActor.run { goals.all().contains { $0.id == id } }
+                await MainActor.run { goals.exists(id) }
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 

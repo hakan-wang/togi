@@ -39,6 +39,17 @@ final class UserEventRepository {
         }) ?? []
     }
 
+    /// Goal check-ins that are due as of `date`: any goal-linked event whose start time has
+    /// arrived. No upper bound, so a check-in the 5-minute tick stepped past still fires next tick.
+    func dueCheckIns(asOf date: Date) -> [UserEvent] {
+        (try? database.dbQueue.read { db in
+            try UserEvent
+                .filter(Column("goal_id") != nil && Column("start_at") <= date)
+                .order(Column("start_at"))
+                .fetchAll(db)
+        }) ?? []
+    }
+
     func delete(id: String) {
         try? database.dbQueue.write { db in _ = try UserEvent.deleteOne(db, key: id) }
     }

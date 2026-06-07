@@ -52,18 +52,17 @@ final class JudgeCoordinator {
     func tick() async {
         let now = Date()
         let recent = observations.recent(within: interval, now: now)
-        let overlapping = events?.events(overlapping: now) ?? []
-        let dueCheckIns = overlapping.filter { $0.cat == "checkin" }
-        guard !recent.isEmpty || !dueCheckIns.isEmpty else { return }
+        let due = events?.dueCheckIns(asOf: now) ?? []
+        guard !recent.isEmpty || !due.isEmpty else { return }
 
         let obs = recent.map {
             (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle,
              text: $0.text, focused: $0.focused)
         }
         let active = blocks.activeBlock(at: now)
-        let activeEvents = overlapping.filter { $0.cat != "checkin" }.map {
-            (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt)
-        }
+        let activeEvents = (events?.events(overlapping: now) ?? [])
+            .filter { $0.goalId == nil }
+            .map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) }
         var input = JudgeInput(
             activeBlock: active.map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
@@ -73,15 +72,13 @@ final class JudgeCoordinator {
         input.activeGoals = goals?.all(status: "active").map {
             (id: $0.id, title: $0.title, status: $0.status, cat: $0.cat)
         } ?? []
-        input.dueCheckIns = dueCheckIns.map {
-            (eventId: $0.id, goalId: $0.goalId, title: $0.title)
-        }
+        input.dueCheckIns = due.map { (eventId: $0.id, goalId: $0.goalId, title: $0.title) }
 
         let payload = JudgePrompt.userJSON(input)
-        _ = try? await sidecar.judge(payload, threadId: "judge")
-
-        // Surface each due check-in exactly once: delete it so it does not re-fire. Recurrence is
-        // the agent scheduling the next add_event when it logs the check-in outcome.
-        dueCheckIns.forEach { events?.delete(id: $0.id) }
+        let reply = try? await sidecar.judge(payload, threadId: "judge")
+        // Surface each due check-in once, but only remove it after a successful dispatch so a
+        // transport failure does not silently drop it. Recurrence is the agent scheduling the
+        // next add_event when it logs the check-in outcome.
+        if reply != nil { due.forEach { events?.delete(id: $0.id) } }
     }
 }

@@ -68,6 +68,12 @@ final class GoalsService {
         }) ?? false)
     }
 
+    func exists(_ id: String) -> Bool {
+        (try? database.dbQueue.read { db in
+            try GoalRecord.filter(key: id).fetchCount(db) > 0
+        }) ?? false
+    }
+
     func delete(id: String) {
         try? database.dbQueue.write { db in _ = try GoalRecord.deleteOne(db, key: id) }
     }

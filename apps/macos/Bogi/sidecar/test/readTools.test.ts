@@ -23,7 +23,7 @@ beforeAll(() => {
       excluded BOOLEAN NOT NULL DEFAULT 0, focused BOOLEAN NOT NULL DEFAULT 1);
     CREATE VIRTUAL TABLE segment_fts USING fts5(segment_id UNINDEXED, description);
     CREATE TABLE category_registry (id TEXT PRIMARY KEY, name TEXT, color TEXT, description TEXT, sort_order INTEGER, created_at TEXT, updated_at TEXT);
-    CREATE TABLE user_events (id TEXT PRIMARY KEY, title TEXT, desc TEXT, cat TEXT, sub TEXT, start_at TEXT, end_at TEXT, created_at TEXT);
+    CREATE TABLE user_events (id TEXT PRIMARY KEY, title TEXT, desc TEXT, cat TEXT, sub TEXT, start_at TEXT, end_at TEXT, created_at TEXT, goal_id TEXT);
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
     INSERT INTO activity_segments VALUES
       ('s1','2026-06-01T09:00:00Z','2026-06-01T09:30:00Z',30,NULL,'Work','Coding','Editing video pipeline',NULL,1,0.9,'2026-06-01T09:30:00Z'),

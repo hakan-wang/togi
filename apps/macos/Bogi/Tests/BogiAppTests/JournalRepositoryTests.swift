@@ -45,4 +45,21 @@ final class JournalRepositoryTests: XCTestCase {
         events.delete(id: "ev1")
         XCTAssertTrue(events.events(forGoal: g.id).isEmpty)
     }
+
+    func testDueCheckInsReturnsOnlyGoalLinkedPastEvents() throws {
+        let db = try DatabaseService(inMemory: true)
+        let goals = GoalsService(database: db)
+        let events = UserEventRepository(database: db)
+        let g = goals.add(title: "Half marathon", period: "quarter")
+        let past = Date().addingTimeInterval(-60)
+        let future = Date().addingTimeInterval(3600)
+        events.insert(UserEvent(id: "due1", title: "Check in", desc: nil, cat: nil, sub: nil,
+                                startAt: past, endAt: past.addingTimeInterval(300), createdAt: past, goalId: g.id))
+        events.insert(UserEvent(id: "notyet", title: "Check in later", desc: nil, cat: nil, sub: nil,
+                                startAt: future, endAt: future.addingTimeInterval(300), createdAt: past, goalId: g.id))
+        events.insert(UserEvent(id: "plain", title: "Gym", desc: nil, cat: nil, sub: nil,
+                                startAt: past, endAt: past.addingTimeInterval(300), createdAt: past, goalId: nil))
+        let dueNow = events.dueCheckIns(asOf: Date())
+        XCTAssertEqual(dueNow.map { $0.id }, ["due1"])
+    }
 }
