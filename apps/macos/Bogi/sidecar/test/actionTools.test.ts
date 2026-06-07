@@ -20,3 +20,20 @@ test("post_nudge emits an action call", async () => {
   expect(seen[0].name).toBe("post_nudge");
   expect(seen[0].input.severity).toBe(2);
 });
+
+test("manage_categories forwards op + args", async () => {
+  const seen: any[] = [];
+  const tools = makeActionTools(async (name, input) => { seen.push({ name, input }); return { ok: true }; });
+  const out = JSON.parse(await tools.find((t) => t.name === "manage_categories")!.invoke({ op: "merge", from: "scroll", into: "social" }));
+  expect(out).toEqual({ ok: true });
+  expect(seen[0].name).toBe("manage_categories");
+  expect(seen[0].input.op).toBe("merge");
+});
+
+test("write_behaviour + add_event forward", async () => {
+  const seen: any[] = [];
+  const tools = makeActionTools(async (name, input) => { seen.push({ name, input }); return { ok: true }; });
+  await tools.find((t) => t.name === "write_behaviour")!.invoke({ text: "learns fast" });
+  await tools.find((t) => t.name === "add_event")!.invoke({ title: "Gym", start: "2026-06-06T18:00:00Z", end: "2026-06-06T19:00:00Z", cat: "health" });
+  expect(seen.map((s) => s.name)).toEqual(["write_behaviour", "add_event"]);
+});

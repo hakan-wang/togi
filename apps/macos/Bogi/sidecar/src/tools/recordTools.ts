@@ -4,7 +4,7 @@ import { type CallAction } from "./actionTools.js";
 
 const segment = z.object({
   start_at: z.string(), end_at: z.string(), minutes: z.number(),
-  category: z.string().nullish(), sub_category: z.string().nullish(), sub_sub: z.string().nullish(),
+  cat: z.string().nullish(), sub: z.string().nullish(), title: z.string().nullish(), desc: z.string().nullish(),
   on_task: z.boolean().nullish(), confidence: z.number().nullish(),
 });
 
@@ -13,7 +13,7 @@ export function makeRecordTools(callAction: CallAction): StructuredToolInterface
     async (input) => JSON.stringify(await callAction("record_segments", input)),
     {
       name: "record_segments",
-      description: "Persist the labeled time segments you produced from the last few minutes of activity. Call this exactly once per activity review, after segmenting the observations into category / sub_category / sub_sub blocks with minutes and on_task.",
+      description: "Persist the labeled time segments you produced from the last few minutes of activity. Call this exactly once per activity review, after segmenting the observations into cat / sub / title / desc blocks with minutes and on_task.",
       schema: z.object({ segments: z.array(segment) }),
     }
   );
