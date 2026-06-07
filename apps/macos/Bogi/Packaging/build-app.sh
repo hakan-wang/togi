@@ -35,7 +35,9 @@ for bundle in "$(dirname "$BIN")"/*.bundle; do
   [ -e "$bundle" ] || continue
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
-# cp -R "$PKG/Assets/"* "$APP/Contents/Resources/" 2>/dev/null || true   # mascot art later
+# App icon: the squircle mascot icns referenced by Info.plist's CFBundleIconFile (AppIcon).
+# Regenerate with: swift Packaging/make-appicon.swift Sources/BogiApp/Resources/mascot.png Packaging/Assets/AppIcon.icns
+cp "$PKG/Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 echo "== sidecar (Node + LangChain.js agent) =="
 SIDECAR_SRC="sidecar"

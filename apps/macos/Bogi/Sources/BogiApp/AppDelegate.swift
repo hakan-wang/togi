@@ -488,6 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onHeightChange: reportHeight,
                 onSettings: { AppDelegate.openSettings() },
                 onClose: { [weak self] in self?.companion?.orderOut(nil) },
+                onClearChat: { state.coach.clearConversation() },
                 seedMessages: seed
             )
             .environmentObject(state)

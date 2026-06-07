@@ -92,6 +92,9 @@ final class CompanionPanel: NSPanel {
 }
 
 extension Notification.Name {
-    /// Posted when the companion panel is shown, so the chat can reset to its opening state.
+    /// Posted when the companion panel is shown, so the chat can refresh its openers and refocus
+    /// the input. The transcript itself persists across opens (the panel is reused).
     static let companionDidOpen = Notification.Name("companionDidOpen")
+    /// Posted when the user taps "clear chat", so the chat surface wipes its transcript.
+    static let companionClearChat = Notification.Name("companionClearChat")
 }
