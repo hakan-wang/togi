@@ -35,6 +35,21 @@ cp "Sources/BogiApp/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
 # Finder/Dock/About icon. Must live directly in Contents/Resources.
 cp "$PKG/Togi.icns" "$APP/Contents/Resources/Togi.icns"
 
+echo "== embed Sparkle.framework =="
+# Sparkle (self-update) ships as a binary XCFramework via SwiftPM. The release binary links
+# against it with an @rpath of @loader_path/../Frameworks, so the framework MUST be embedded
+# in Contents/Frameworks or the app won't launch. SwiftPM does NOT embed it for CLI builds
+# (that's an Xcode "Copy Files" phase), so we copy the macOS slice in by hand. -R preserves
+# the framework's internal symlinks (Versions/Current and the nested Updater.app/XPC services).
+SPARKLE_FW="$(find .build/artifacts -type d -name 'Sparkle.framework' -path '*macos*' | head -1)"
+if [ -z "$SPARKLE_FW" ]; then
+  echo "ERROR: Sparkle.framework not found under .build/artifacts — did 'swift build -c release' run?" >&2
+  exit 1
+fi
+mkdir -p "$APP/Contents/Frameworks"
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework"
+cp -R "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
+
 echo "== sidecar (Node + LangChain.js agent) =="
 SIDECAR_SRC="sidecar"
 RESOURCES="$APP/Contents/Resources"
@@ -128,6 +143,22 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
         codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$f"
       fi
     done
+
+  echo "== codesign Sparkle.framework (inside-out) =="
+  # Sparkle bundles nested helper code (two XPC services, the Autoupdate tool, and Updater.app)
+  # that must each be signed BEFORE the framework, and the framework before the outer app —
+  # codesign signs inside-out and rejects pre-signed nested code that doesn't match our identity.
+  # We sign explicitly rather than relying on `--deep` (which Apple deprecates for distribution).
+  SPARKLE_VER="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+  for nested in \
+    "$SPARKLE_VER/XPCServices/Downloader.xpc" \
+    "$SPARKLE_VER/XPCServices/Installer.xpc" \
+    "$SPARKLE_VER/Autoupdate" \
+    "$SPARKLE_VER/Updater.app"; do
+    codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$nested"
+  done
+  codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" \
+    "$APP/Contents/Frameworks/Sparkle.framework"
 
   echo "== codesign (hardened runtime) =="
   codesign --force --options runtime --timestamp \

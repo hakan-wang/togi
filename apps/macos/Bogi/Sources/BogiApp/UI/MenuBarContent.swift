@@ -3,6 +3,7 @@ import SwiftUI
 /// Menu-bar dropdown. Placeholder actions for Phase 0; wired up in later phases.
 struct MenuBarContent: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var updater: UpdaterController
 
     var body: some View {
         Button("Open Togi") { appState.openDashboard?() }
@@ -32,6 +33,9 @@ struct MenuBarContent: View {
         SettingsLink {
             Text("Settings…")
         }
+
+        Button("Check for Updates…") { updater.checkForUpdates() }
+            .disabled(!updater.canCheckForUpdates)
 
         Divider()
 

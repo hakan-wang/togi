@@ -7,11 +7,15 @@ import SwiftUI
 @main
 struct BogiApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// Sparkle self-updater. Owned by the App so it lives for the whole process lifetime
+    /// and starts its background check schedule once at launch.
+    @StateObject private var updater = UpdaterController()
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarContent()
                 .environmentObject(appDelegate.appState)
+                .environmentObject(updater)
         } label: {
             Image(nsImage: MenuBarIcon.image)
                 .accessibilityLabel("Togi")
