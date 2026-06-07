@@ -16,7 +16,10 @@ This delivers three agent-tailored surfaces on top of the existing read tools:
 
 1. **Category registry** — the closed-at-any-moment set of categories (id, name, color), seeded
    with 9 defaults but curated by the agent over time.
-2. **Behaviour memory** — a single evolving free-text profile of how the user works.
+2. **User memory** — the agent's profile of the user, in two parts: stable **identity** the user
+   owns (display name, north-star/apex goal + why) and a single evolving **learned-behaviour**
+   doc the agent rewrites. The identity half is the home for what the michelle-merge onboarding
+   collects (see "Onboarding coordination"), replacing its `north_star` table + Supabase sync.
 3. **Custom events** — a lightweight personal calendar of real-world commitments the user
    mentions in chat.
 
@@ -50,11 +53,18 @@ A block reads: `deepwork → Litro → "Formula v3 doc" / "Finish the write-up."
 - **Merge rewrites everywhere.** `merge(from → into)` reassigns `cat = into` across all three
   record tables (segments + planned_blocks + user_events), then deletes `from`. The persona/
   tool description states this consequence so the agent merges deliberately.
-- **Behaviour storage:** a single evolving document, full-text REPLACE on write. Stored as one
-  row in `settings` keyed `behaviour_profile`. Clobber across concurrent judge+chat is a
+- **Memory = identity + learned behaviour.** Identity (user-owned, stable) lives in `settings`
+  keys: `user_display_name`, `north_star`, `north_star_why`. Learned behaviour (agent-owned,
+  evolving) is a single free-text doc in `settings['behaviour_profile']`, full-text REPLACE on
+  write. The agent reads all of it but `write_behaviour` only rewrites the learned doc, so it
+  can never clobber the user's name or north star. Clobber across concurrent judge+chat is a
   non-issue because the sidecar serializes dispatches (`main.ts` `pending` chain).
-- **Behaviour recall:** a tool the agent calls (`read_behaviour`), not auto-injected; the
-  persona nudges it to call before judging/answering.
+- **Memory recall:** one tool the agent calls (`read_behaviour`), returning identity + learned
+  behaviour together; not auto-injected. The persona nudges it to call before judging/answering,
+  to address the user by name, and to weigh drift against the north star.
+- **No backend for memory.** Identity is local-first like everything else. This intentionally
+  drops the michelle-merge `north_star` table + `NorthStarSync` (Supabase); cross-device sync of
+  the north star is out of scope here.
 - **Events storage:** the new `user_events` table, defined directly in the four-field shape
   (this supersedes the earlier `title/category/notes` shape). Independent from `planned_blocks`.
 - **UI scope:** v1 is **data + agent only**. The registry exposes colors via a repository for
@@ -146,7 +156,9 @@ string (now built from `cat`/`sub`/`title`).
 ### 3. Sidecar read tools (`readTools.ts`, direct read-only SQL)
 
 - `list_categories()` → `{ categories: [{ id, name, color, description }] }` ordered by `sort_order`.
-- `read_behaviour()` → `{ behaviour: string | null }` from `settings`.
+- `read_behaviour()` → `{ name: string | null, northStar: string | null, northStarWhy: string |
+  null, behaviour: string | null }` — reads the four `settings` keys (`user_display_name`,
+  `north_star`, `north_star_why`, `behaviour_profile`). One call returns the whole user memory.
 - `list_events(start, end)` → `{ events: [...] }`, reusing `normalizeBound` + the `datetime()`
   range handling (see the timestamp-format fix already in `readTools.ts`).
 - `summarize_range` extended: group by `cat` (was `category`); also fetch `user_events` in range
@@ -163,7 +175,8 @@ string (now built from `cat`/`sub`/`title`).
   - `recolor({ id, color })`
   - `merge({ from, into })`
   Description states merge reassigns the category across all records then deletes it.
-- `write_behaviour({ text })` — REPLACES the whole profile.
+- `write_behaviour({ text })` — REPLACES the learned-behaviour doc only
+  (`settings['behaviour_profile']`). Never touches identity (name / north star).
 - `add_event({ title, desc?, cat?, sub?, start, end })` — resolve relative times against now.
 
 `record_segments` schema changes: `category/sub_category/sub_sub` → `cat/sub/title/desc`
@@ -205,9 +218,11 @@ Append (concise, no em-dashes):
   (add/rename/recolor), and use `merge` to combine two categories that are really the same —
   merge reassigns that category across all the user's past activity, plans, and events, then
   removes it, so do it deliberately.
-- **Behaviour:** before judging a batch or answering habit questions, call `read_behaviour`.
-  When you notice a durable pattern, call `read_behaviour` then `write_behaviour` with the full
-  updated profile (REPLACE; keep prior insights you still believe; keep it a short bulleted list).
+- **Memory:** before judging a batch or answering habit questions, call `read_behaviour`. Use
+  the user's name when you have it, and weigh drift and advice against their north star. When you
+  notice a durable pattern, call `read_behaviour` then `write_behaviour` with the full updated
+  learned-behaviour text (REPLACE; keep prior insights you still believe; short bulleted list).
+  `write_behaviour` only updates learned behaviour, never the name or north star.
 - **Events:** when the user mentions a real commitment (meeting, gym, appointment, call), call
   `add_event`, resolving relative times against the current time.
 
@@ -235,11 +250,32 @@ exists.
   and deletes the source; `exists` gating.
 - **SidecarActionHandlers**: `manage_categories` each op; `write_behaviour`; `add_event`;
   `record_segments` rejects an unknown `cat`; bad input rejected.
-- **Sidecar vitest (read)**: `list_categories`, `read_behaviour` (value/null), `list_events`
-  range filter, `summarize_range` groups by `cat` and includes `events`.
+- **Sidecar vitest (read)**: `list_categories`, `read_behaviour` (returns name / north star /
+  why / behaviour from the four settings keys; nulls when unset), `list_events` range filter,
+  `summarize_range` groups by `cat` and includes `events`.
 - **Sidecar vitest (action)**: `manage_categories` / `write_behaviour` / `add_event` schemas +
   callAction routing; `record_segments` new schema.
 - **JudgePromptTests**: `active_events` serialization (present, empty, multiple); output-shape doc.
+
+## Onboarding coordination (michelle-merge, merges later)
+
+The `integration/michelle-merge` worktree adds an onboarding flow that collects the same identity
+this memory now owns. Today it writes:
+- name → `settings['user_display_name']` (already where this spec reads it — no change needed), and
+- north star → a `north_star` table synced to Supabase via `NorthStarSync`.
+
+Build this spec so that, at merge time, the north star lands in memory instead of the side-table:
+- Onboarding writes `settings['north_star']` / `settings['north_star_why']` (the keys
+  `read_behaviour` reads) rather than `NorthStarService.save`.
+- The `north_star` table, `NorthStarRecord`, `NorthStarService`, and `NorthStarSync` are removed
+  (north star becomes local-first memory; the Supabase sync is dropped).
+- Note the migration-name collision: this spec's migration is `v5_tailored_data_model`; the
+  worktree's is `v5_north_star`. They are distinct GRDB identifiers and can coexist, but at merge
+  drop the `north_star` one rather than keeping a dead table.
+
+This spec does NOT modify the worktree (it isn't merged). It only fixes the contract — the four
+`settings` keys — so the onboarding can adopt it with a small edit when the branches join. Captured
+as a non-code task in the plan.
 
 ## Out of scope (flagged)
 
