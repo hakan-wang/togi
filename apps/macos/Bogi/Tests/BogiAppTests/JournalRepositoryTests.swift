@@ -30,4 +30,19 @@ final class JournalRepositoryTests: XCTestCase {
         XCTAssertEqual(r.entries(kind: "insight", status: "active").count, 0)
         XCTAssertEqual(r.entries(kind: "insight", status: "dismissed").count, 1)
     }
+
+    func testUserEventForGoalAndDelete() throws {
+        let db = try DatabaseService(inMemory: true)
+        let events = UserEventRepository(database: db)
+        let goals = GoalsService(database: db)
+        let g = goals.add(title: "Half marathon", period: "quarter")
+        let now = Date()
+        let e = UserEvent(id: "ev1", title: "Check in: half marathon", desc: nil, cat: "checkin",
+                          sub: nil, startAt: now, endAt: now.addingTimeInterval(300),
+                          createdAt: now, goalId: g.id)
+        events.insert(e)
+        XCTAssertEqual(events.events(forGoal: g.id).map { $0.id }, ["ev1"])
+        events.delete(id: "ev1")
+        XCTAssertTrue(events.events(forGoal: g.id).isEmpty)
+    }
 }
