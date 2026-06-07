@@ -7,6 +7,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { DOMAINS, domainShort, DISCREPANCIES, PlanBlock, RealEntry, fmt } from "../lib/data";
+import { gapWindows } from "../lib/userFacts";
 import { IcArrow, IcCheck, IcMic, IcPlan, IcReturn, IcTrash, IcWave } from "./icons";
 
 function CheckinRow({ block, status, onSession }: { block: PlanBlock; status: "due" | "scheduled" | "done"; onSession: any }) {
@@ -69,8 +70,11 @@ function PlannedNotDone() {
   );
 }
 
-export function SessionsView({ onSession, onTalk, plan = [], real = [], today, nowMin = 0, planningMin = 1260 }: any) {
+export function SessionsView({ onSession, onTalk, onGapCheckin, plan = [], real = [], today, nowMin = 0, planningMin = 1260, autoCheckin = false, minGapMin = 30 }: any) {
   const todays: PlanBlock[] = plan.filter((b: PlanBlock) => (b.date || today) === today).sort((a: PlanBlock, b: PlanBlock) => a.start - b.start);
+  // blank-time check-ins: hourly windows inside gaps ≥ minGapMin (when enabled)
+  const gapCheckins: Array<{ start: number; end: number }> = [];
+  if (autoCheckin) for (let i = 0; i < todays.length - 1; i++) { const g0 = todays[i].end, g1 = todays[i + 1].start; if (g1 - g0 >= minGapMin) gapCheckins.push(...gapWindows(g0, g1, minGapMin)); }
   const liveSlots = new Set(real.filter((r: RealEntry) => r.live && r.slot).map((r: RealEntry) => r.slot));
   const ended = todays.filter((b) => b.end <= nowMin);
   const due = ended.filter((b) => !liveSlots.has(b.id));
@@ -118,6 +122,22 @@ export function SessionsView({ onSession, onTalk, plan = [], real = [], today, n
         <section className="ses-section">
           <div className="ses-section-h"><span className="ses-section-t">Scheduled check-ins</span><span className="ses-section-c">one per block, 2 min each</span></div>
           <div className="ses-list">{upcoming.map((b) => <CheckinRow key={b.id} block={b} status="scheduled" onSession={onSession} />)}</div>
+        </section>
+      )}
+
+      {autoCheckin && gapCheckins.length > 0 && (
+        <section className="ses-section">
+          <div className="ses-section-h"><span className="ses-section-t">Blank-time check-ins</span><span className="ses-section-c">fill the gaps so nothing’s lost</span></div>
+          <div className="ses-list">
+            {gapCheckins.map((w, i) => (
+              <button className="ses-row" key={i} onClick={() => onGapCheckin && onGapCheckin(w)}>
+                <span className="ses-ic" style={{ color: "var(--togi-muted)" }}><IcWave size={16} /></span>
+                <div className="ses-main"><div className="ses-title">Untracked stretch</div><div className="ses-sub num">{fmt(w.start)}–{fmt(w.end)}</div></div>
+                <div className="ses-right"><span className="ses-when num">{fmt(w.start)}</span><span className="ses-mins num">2 min</span></div>
+                <span className="ses-go"><IcArrow size={16} /></span>
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

@@ -401,7 +401,7 @@ export function TogiAppB() {
             </div>
           </div>
         )}
-        {tab === "sessions" && (<div className="content-scroll"><SessionsView onSession={startSession} onTalk={() => openSession("ask")} plan={plan} real={real} today={today} nowMin={nowMin} planningMin={loadFacts().planningMin} /></div>)}
+        {tab === "sessions" && (<div className="content-scroll"><SessionsView onSession={startSession} onTalk={() => openSession("ask")} plan={plan} real={real} today={today} nowMin={nowMin} planningMin={loadFacts().planningMin} autoCheckin={loadFacts().autoCheckin} minGapMin={loadFacts().minGapMin} onGapCheckin={(w: any) => setCapture({ context: { ...selfCtx(`${fmt(w.start)}–${fmt(w.end)}`), start: w.start, end: w.end } })} /></div>)}
         {tab === "insights" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header><InsightsPage onOpenSession={openSession} /></div></div>)}
         {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage onConnectCalendar={connectCalendar} onDisconnectCalendar={disconnectCalendar} onAddEvent={() => setGcalEditor({ block: null })} calStatus={calStatus} calConnected={calConnected} calConfigured={calConfigured} calEmail={calEmail} /></div></div>)}
       </main>

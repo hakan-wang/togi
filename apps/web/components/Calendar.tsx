@@ -168,12 +168,19 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
   };
   const submitListen = async () => {
     if (!listen) return;
-    const ctx = listen.ctx;
+    const ctx = listen.ctx; const draftText = listen.draftText;
     setListen((l: any) => (l ? { ...l, busy: true } : l));
     const blob = await rec.stop();
+    try {
+      const res = await onVoice(ctx, { blob, draftText });
+      if (res && res.status === "clarify") {
+        // one floating-chat question — keep the popover open and listening for the answer
+        setListen((l: any) => (l ? { ...l, busy: false, question: res.question, draftText: res.draftText, label: "answer Togi" } : l));
+        try { await rec.start(); } catch { setListen(null); onType(ctx); }
+        return;
+      }
+    } catch { /* fall through to close */ }
     setListen(null);
-    try { const res = await onVoice(ctx, { blob }); if (res && res.status === "clarify") onType(ctx); }
-    catch { onType(ctx); }
   };
   const cancelListen = () => { rec.cancel(); setListen(null); };
   const typeListen = () => { const ctx = listen?.ctx; rec.cancel(); setListen(null); if (ctx) onType(ctx); };
@@ -278,6 +285,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
               <div className="listen" style={{ left: Math.min(listen.x, (trackRef.current?.offsetWidth || 400) - 168), top: Math.max(listen.y - 58, 0) }}>
                 <img className="listen-mascot bg-bob" src="/togi-mascot.png" alt="" />
                 <div className="listen-card">
+                  {listen.question && <div style={{ color: "rgba(255,255,255,0.92)", fontSize: 12, lineHeight: 1.35, marginBottom: 7 }}>Togi: {listen.question}</div>}
                   <div className="listen-bubble"><span className="listen-wave"><i /><i /><i /><i /></span> {listen.busy ? "Saving…" : "Listening…"} <span className="dim">{listen.label}</span></div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button className="listen-type" onClick={(e) => { e.stopPropagation(); typeListen(); }}><IcChat size={12} /> type instead</button>

@@ -10,6 +10,7 @@ import { CATEGORIES, DOMAINS, SHORT_TERM_INSIGHTS } from "../lib/data";
 import { IcArrow, IcCheck, IcClose, IcMic, IcSpark, IcPlus } from "./icons";
 import { computeStats, seedHistory } from "../lib/behavior";
 import { applyToPlanning, dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
+import { loadFacts, setFact } from "../lib/userFacts";
 
 const FAMILY_COLOR: Record<string, string> = {
   drift: "var(--cat-creative)", estimation: "var(--cat-errands)", distraction: "var(--cat-scroll)",
@@ -119,6 +120,8 @@ function Toggle({ on, onClick }: any) {
 export function SettingsPage({ onConnectCalendar, onDisconnectCalendar, onAddEvent, calStatus, calConnected, calConfigured, calEmail }: { onConnectCalendar?: () => void; onDisconnectCalendar?: () => void; onAddEvent?: () => void; calStatus?: string | null; calConnected?: boolean; calConfigured?: boolean; calEmail?: string | null }) {
   const [s, setS] = useState<any>({ checkin: true, call: false, blank: false, wake: true, reduce: false });
   const set = (k: string) => setS((p: any) => ({ ...p, [k]: !p[k] }));
+  const [facts, setFactsState] = useState(() => loadFacts());
+  const updateFact = (k: any, v: any) => { setFact(k, v); setFactsState(loadFacts()); };
   const Row = ({ k, title, sub }: any) => (
     <div className="set-row"><div><div className="set-title">{title}</div><div className="set-sub">{sub}</div></div><Toggle on={s[k]} onClick={() => set(k)} /></div>
   );
@@ -152,6 +155,20 @@ export function SettingsPage({ onConnectCalendar, onDisconnectCalendar, onAddEve
             </div>
           </>
         )}
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Auto check-in</span><span className="card-sub">never lose blank time</span></div>
+        <div className="set-row">
+          <div><div className="set-title">Check in on blank time</div><div className="set-sub">Togi asks what you did during empty stretches so your day is complete — shown in Sessions, not the calendar.</div></div>
+          <Toggle on={facts.autoCheckin} onClick={() => updateFact("autoCheckin", !facts.autoCheckin)} />
+        </div>
+        {facts.autoCheckin && (<>
+          <div className="hairline" />
+          <div className="set-row">
+            <div><div className="set-title">Smallest gap to track</div><div className="set-sub">Ignore gaps shorter than this. Longer gaps get one check-in per hour.</div></div>
+            <div className="seg-mini">{[15, 30, 45, 60].map((m) => <button key={m} className={facts.minGapMin === m ? "on" : ""} onClick={() => updateFact("minGapMin", m)}>{m}m</button>)}</div>
+          </div>
+        </>)}
       </div>
       <div className="card">
         <div className="card-head"><span className="card-title">Check-ins</span><span className="card-sub">a nudge, never a nag</span></div>
