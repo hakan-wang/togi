@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     let segments: SegmentStore
     let categories: CategoryRepository
     let userEvents: UserEventRepository
+    let journal: JournalRepository
     let plannedBlocks: PlannedBlockRepository
     let planner: PlannerService
     let eventKit: EventKitService
@@ -99,6 +100,7 @@ final class AppState: ObservableObject {
         self.segments = SegmentStore(database: database)
         self.categories = CategoryRepository(database: database)
         self.userEvents = UserEventRepository(database: database)
+        self.journal = JournalRepository(database: database)
         self.plannedBlocks = plannedBlocks
         self.eventKit = EventKitService()
         self.googleCalendar = GoogleCalendarService()
@@ -335,6 +337,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let categories = appState.categories
         let userEvents = appState.userEvents
         let settings = appState.settings
+        let goals = appState.goals
+        let journal = appState.journal
         let actions = SidecarActionHandlers(
             createBlock: { title, start, end in
                 await MainActor.run {
@@ -392,6 +396,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             addEvent: { event in
                 await MainActor.run { userEvents.insert(event); return event.id }
+            },
+            manageGoal: { op, args in
+                await MainActor.run {
+                    switch op {
+                    case "add":
+                        guard let title = args["title"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        let g = goals.add(title: title, period: (args["period"] as? String) ?? "custom",
+                                          target: args["target"] as? String, why: args["why"] as? String,
+                                          cat: args["cat"] as? String)
+                        return ["ok": true, "id": g.id]
+                    case "update":
+                        guard let id = args["id"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        let ok = goals.update(id: id, status: args["status"] as? String, why: args["why"] as? String,
+                                              target: args["target"] as? String, cat: args["cat"] as? String)
+                        return ["ok": ok]
+                    default:
+                        return ["ok": false, "error": "unknown_op"]
+                    }
+                }
+            },
+            logJournal: { entry in
+                await MainActor.run { journal.insert(entry); return entry.id }
+            },
+            setJournalStatus: { id, status in
+                await MainActor.run { journal.setStatus(id: id, status: status); return true }
+            },
+            goalExists: { id in
+                await MainActor.run { goals.all().contains { $0.id == id } }
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 
@@ -408,7 +440,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             blocks: appState.plannedBlocks,
             segments: appState.segments,
             sidecar: appState.sidecar,
-            events: userEvents
+            events: userEvents,
+            goals: appState.goals
         )
         coordinator.start()
         self.coordinator = coordinator
