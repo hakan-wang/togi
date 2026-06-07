@@ -10,6 +10,7 @@ final class JudgeCoordinator {
     private let blocks: PlannedBlockRepository
     private let segments: SegmentStore
     private let sidecar: SidecarClient
+    private let events: UserEventRepository?
     private let interval: TimeInterval
     /// Rolling window for the off-task minutes fed into nudge urgency (60 min).
     private let offTaskWindow: TimeInterval = 3600
@@ -19,11 +20,13 @@ final class JudgeCoordinator {
          blocks: PlannedBlockRepository,
          segments: SegmentStore,
          sidecar: SidecarClient,
+         events: UserEventRepository? = nil,
          interval: TimeInterval = 300) {
         self.observations = observations
         self.blocks = blocks
         self.segments = segments
         self.sidecar = sidecar
+        self.events = events
         self.interval = interval
     }
 
@@ -51,10 +54,14 @@ final class JudgeCoordinator {
              text: $0.text, focused: $0.focused)
         }
         let active = blocks.activeBlock(at: now)
+        let activeEvents = events?.events(overlapping: now).map {
+            (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt)
+        } ?? []
         let input = JudgeInput(
             activeBlock: active.map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now)
+            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now),
+            activeEvents: activeEvents
         )
         let payload = JudgePrompt.userJSON(input)
         _ = try? await sidecar.judge(payload, threadId: "judge")

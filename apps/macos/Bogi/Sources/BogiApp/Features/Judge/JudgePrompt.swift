@@ -6,6 +6,7 @@ struct JudgeInput {
     var activeBlock: (title: String, cat: String?, startAt: Date, endAt: Date)?
     var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
+    var activeEvents: [(title: String, cat: String?, startAt: Date, endAt: Date)] = []
 }
 
 /// Builds the user payload for the activity judge tick. Pure string construction so the
@@ -45,6 +46,16 @@ enum JudgePrompt {
         }
 
         root["recent_off_task_minutes"] = input.recentOffTaskMinutes
+
+        if !input.activeEvents.isEmpty {
+            root["active_events"] = input.activeEvents.map { e -> [String: Any] in
+                var o: [String: Any] = ["title": e.title,
+                                        "start_at": iso.string(from: e.startAt),
+                                        "end_at": iso.string(from: e.endAt)]
+                if let cat = e.cat { o["cat"] = cat }
+                return o
+            }
+        }
 
         root["observations"] = input.observations.map { obs -> [String: Any] in
             var o: [String: Any] = ["t": iso.string(from: obs.t), "focused": obs.focused]

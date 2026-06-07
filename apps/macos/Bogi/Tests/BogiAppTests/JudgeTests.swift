@@ -76,6 +76,27 @@ final class JudgeTests: XCTestCase {
         XCTAssertTrue(json.contains("\"focused\""), "observation JSON should carry focused")
     }
 
+    // MARK: - activeEvents
+
+    func testUserJSONIncludesActiveEvents() throws {
+        let iso = ISO8601DateFormatter(); iso.formatOptions = [.withInternetDateTime]
+        let input = JudgeInput(
+            activeBlock: nil,
+            observations: [(t: iso.date(from: "2026-06-06T10:00:00Z")!, app: "cmux", window: nil, text: nil, focused: true)],
+            recentOffTaskMinutes: 0,
+            activeEvents: [(title: "Gym", cat: "health",
+                            startAt: iso.date(from: "2026-06-06T09:30:00Z")!,
+                            endAt: iso.date(from: "2026-06-06T11:00:00Z")!)])
+        let json = JudgePrompt.userJSON(input)
+        XCTAssertTrue(json.contains("active_events"))
+        XCTAssertTrue(json.contains("Gym"))
+    }
+
+    func testUserJSONOmitsEmptyEvents() throws {
+        let input = JudgeInput(activeBlock: nil, observations: [], recentOffTaskMinutes: 0, activeEvents: [])
+        XCTAssertFalse(JudgePrompt.userJSON(input).contains("active_events"))
+    }
+
     // MARK: - offTaskMinutes
 
     func testOffTaskMinutesSumsOnlyInWindowOffTask() throws {
