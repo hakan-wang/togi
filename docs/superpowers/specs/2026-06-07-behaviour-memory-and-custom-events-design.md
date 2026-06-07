@@ -1,7 +1,8 @@
 # Behaviour memory + custom events — design
 
 Date: 2026-06-07
-Status: Approved (pending spec review)
+Status: Superseded by `2026-06-07-tailored-data-model-design.md` (folded in; `user_events` is
+redefined there in the cat/sub/title/desc shape and built concurrently with the category model).
 Scope: macOS app (`apps/macos/Bogi`) — sidecar agent + Swift app + local SQLite. No backend changes.
 
 ## Goal
