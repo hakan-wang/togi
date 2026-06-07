@@ -104,6 +104,48 @@ final class EventKitService {
         }
     }
 
+    /// Create a standalone event in the user's default (synced) calendar — used by voice
+    /// scheduling (CalendarRouter) for ordinary events. Returns the new event's identifier (for
+    /// later undo), or nil if it couldn't be saved.
+    @discardableResult
+    func createEvent(title: String, start: Date, end: Date, notes: String? = nil) -> String? {
+        guard authorizationStatus() == .granted else { return nil }
+
+        let event = EKEvent(eventStore: store)
+        event.calendar = store.defaultCalendarForNewEvents ?? bogiCalendar()
+        event.title = title
+        event.startDate = start
+        event.endDate = end > start ? end : start.addingTimeInterval(30 * 60)
+        if let notes { event.notes = notes }
+
+        // Remind ahead of the event: 1 hour, 30 minutes, and 10 minutes before.
+        for offset in [-3600.0, -1800.0, -600.0] {
+            event.addAlarm(EKAlarm(relativeOffset: offset))
+        }
+
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+            return event.eventIdentifier
+        } catch {
+            return nil
+        }
+    }
+
+    /// Remove an event Togi created, identified by the id returned from ``createEvent`` /
+    /// ``upsertBogiBlock``. Returns true on success. No-op if permission is missing or the
+    /// event no longer exists.
+    @discardableResult
+    func deleteEvent(identifier: String) -> Bool {
+        guard authorizationStatus() == .granted,
+              let event = store.event(withIdentifier: identifier) else { return false }
+        do {
+            try store.remove(event, span: .thisEvent, commit: true)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func bogiCalendar() -> EKCalendar? {
         if let match = store.calendars(for: .event).first(where: { $0.title == bogiCalendarTitle }) {
             return match

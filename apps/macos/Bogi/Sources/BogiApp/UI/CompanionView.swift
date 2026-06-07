@@ -20,6 +20,8 @@ struct CompanionView: View {
     var onClose: () -> Void = {}
     /// Pre-seeded transcript for previews and the screenshot demo hook. Empty in the real app.
     var seedMessages: [(role: String, text: String)] = []
+    /// Hands-free voice scheduling, forwarded to the chat composer. nil in previews/demo.
+    var voice: VoiceSession? = nil
 
     @State private var page: Page = .chat
     @State private var period: DashboardPeriod = .day
@@ -95,7 +97,8 @@ struct CompanionView: View {
                 ask: ask,
                 suggest: suggest,
                 transcriptMaxHeight: max(160, maxContentHeight - 140),
-                seedMessages: seedMessages
+                seedMessages: seedMessages,
+                voice: voice
             )
             .transition(.opacity.combined(with: .move(edge: .leading)))
         case .dashboard:

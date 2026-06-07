@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import AppKit
+import AuthenticationServices
 
 /// Client-side Google Calendar integration using installed-app OAuth (Desktop client) with PKCE.
 /// Tokens live ONLY in the macOS Keychain; they are never sent to any Bogi backend. The app talks
@@ -35,6 +36,13 @@ final class GoogleCalendarService {
     /// browser (the loopback flow returns the user here via 127.0.0.1, not a custom scheme).
     private let openURL: (URL) -> Void
 
+    /// Custom URL scheme registered by the app for the OAuth redirect (ASWebAuthenticationSession
+    /// path used by CalendarRouter), e.g. "com.bogi.app".
+    private let redirectScheme: String
+
+    /// Holds the in-flight ASWebAuthenticationSession's presentation provider.
+    private var presentationProvider: PresentationContextProvider?
+
     init(
         tokenStore: KeychainTokenStore = KeychainTokenStore(),
         session: URLSession = .shared,
@@ -43,7 +51,25 @@ final class GoogleCalendarService {
         self.tokenStore = tokenStore
         self.session = session
         self.openURL = openURL
+        self.redirectScheme = "com.bogi.app"
     }
+
+    /// Init used by CalendarRouter (voice booking). Supplies the redirect scheme for the
+    /// ASWebAuthenticationSession-based `authorize(clientId:presentationAnchor:)` flow.
+    init(
+        redirectScheme: String,
+        tokenStore: KeychainTokenStore = KeychainTokenStore(),
+        session: URLSession = .shared
+    ) {
+        self.tokenStore = tokenStore
+        self.session = session
+        self.openURL = { NSWorkspace.shared.open($0) }
+        self.redirectScheme = redirectScheme
+    }
+
+    /// Whether a token bundle is present in the Keychain — i.e. the user has connected Google.
+    /// Used by the calendar router to decide whether to book straight to Google.
+    var isAuthenticated: Bool { loadTokens() != nil }
 
     // MARK: - PKCE (pure, testable)
 
@@ -178,6 +204,74 @@ final class GoogleCalendarService {
         try await exchangeCode(code, clientId: clientId, clientSecret: clientSecret, verifier: pkce.verifier, redirectURI: redirectURI)
     }
 
+    // MARK: - Authorization (ASWebAuthenticationSession, used by CalendarRouter)
+
+    /// Run the installed-app PKCE flow via ASWebAuthenticationSession using a custom redirect
+    /// scheme (no client secret). Used by CalendarRouter for the voice-to-calendar booking path.
+    @MainActor
+    func authorize(clientId: String, presentationAnchor: ASPresentationAnchor) async throws {
+        let pkce = Self.makePKCE()
+        // Loopback redirect URI form: "<scheme>:/oauth2redirect" (custom scheme, installed app).
+        let redirectURI = "\(redirectScheme):/oauth2redirect"
+
+        var components = URLComponents(url: Self.authorizeEndpoint, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "client_id", value: clientId),
+            URLQueryItem(name: "redirect_uri", value: redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "scope", value: Self.calendarScope),
+            URLQueryItem(name: "code_challenge", value: pkce.challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "access_type", value: "offline"),
+            URLQueryItem(name: "prompt", value: "consent")
+        ]
+        guard let authURL = components.url else { throw GoogleCalendarError.authorizationFailed }
+
+        let callbackURL = try await presentAuthSession(
+            authURL: authURL,
+            scheme: redirectScheme,
+            anchor: presentationAnchor
+        )
+
+        guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "code" })?
+            .value
+        else {
+            throw GoogleCalendarError.missingAuthorizationCode
+        }
+
+        // No client secret on this installed-app path.
+        try await exchangeCode(code, clientId: clientId, clientSecret: "", verifier: pkce.verifier, redirectURI: redirectURI)
+    }
+
+    @MainActor
+    private func presentAuthSession(
+        authURL: URL,
+        scheme: String,
+        anchor: ASPresentationAnchor
+    ) async throws -> URL {
+        let provider = PresentationContextProvider(anchor: anchor)
+        self.presentationProvider = provider
+        return try await withCheckedThrowingContinuation { continuation in
+            let authSession = ASWebAuthenticationSession(
+                url: authURL,
+                callbackURLScheme: scheme
+            ) { callbackURL, error in
+                if let callbackURL {
+                    continuation.resume(returning: callbackURL)
+                } else {
+                    continuation.resume(throwing: error ?? GoogleCalendarError.authorizationFailed)
+                }
+            }
+            authSession.presentationContextProvider = provider
+            authSession.prefersEphemeralWebBrowserSession = false
+            if !authSession.start() {
+                continuation.resume(throwing: GoogleCalendarError.authorizationFailed)
+            }
+        }
+    }
+
     // MARK: - Token exchange / refresh
 
     private struct TokenResponse: Decodable {
@@ -233,6 +327,12 @@ final class GoogleCalendarService {
         )
         storeTokens(updated)
         return updated.accessToken
+    }
+
+    /// Refresh overload for the installed-app (no client secret) path used by CalendarRouter.
+    @discardableResult
+    private func refreshAccessToken(clientId: String) async throws -> String {
+        try await refreshAccessToken(clientId: clientId, clientSecret: "")
     }
 
     private func postForm(_ url: URL, params: [String: String]) async throws -> Data {
@@ -411,6 +511,80 @@ final class GoogleCalendarService {
         }
     }
 
+    // MARK: - Writes (voice booking via CalendarRouter)
+
+    private struct CreatedEvent: Decodable { var id: String }
+
+    /// Create an event on the user's primary Google calendar with a reminder ladder and optional
+    /// notes (used by CalendarRouter for voice booking). Refreshes the access token once on a 401.
+    /// Returns the new event id (used for undo). Pass the same clientId used to authorize.
+    @discardableResult
+    func createEvent(title: String, start: Date, end: Date, notes: String?, clientId: String) async throws -> String {
+        guard let bundle = loadTokens() else { throw GoogleCalendarError.notAuthenticated }
+        do {
+            return try await createEventVoice(title: title, start: start, end: end, notes: notes, accessToken: bundle.accessToken)
+        } catch GoogleCalendarError.requestFailed(let status, _) where status == 401 {
+            let refreshed = try await refreshAccessToken(clientId: clientId)
+            return try await createEventVoice(title: title, start: start, end: end, notes: notes, accessToken: refreshed)
+        }
+    }
+
+    private func createEventVoice(title: String, start: Date, end: Date, notes: String?, accessToken: String) async throws -> String {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        // A zero-or-negative span would be rejected by Google; default to 30 minutes like EventKit.
+        let safeEnd = end > start ? end : start.addingTimeInterval(30 * 60)
+        let tz = TimeZone.current.identifier
+
+        var body: [String: Any] = [
+            "summary": title,
+            "start": ["dateTime": iso.string(from: start), "timeZone": tz],
+            "end": ["dateTime": iso.string(from: safeEnd), "timeZone": tz],
+            "reminders": [
+                "useDefault": false,
+                "overrides": [
+                    ["method": "popup", "minutes": 60],
+                    ["method": "popup", "minutes": 30],
+                    ["method": "popup", "minutes": 10]
+                ]
+            ]
+        ]
+        if let notes { body["description"] = notes }
+
+        let url = URL(string: "\(Self.apiBase)/calendars/\(Self.writeCalendarId)/events")!
+        let data = try await authorizedData(url, method: "POST", accessToken: accessToken, jsonBody: body)
+        return try JSONDecoder().decode(CreatedEvent.self, from: data).id
+    }
+
+    /// Delete an event Togi created on the primary calendar (used for undo). Refreshes once on 401.
+    /// Treats 404/410 as success — the event is already gone, which is the desired end state.
+    @discardableResult
+    func deleteEvent(id: String, clientId: String) async throws -> Bool {
+        guard let bundle = loadTokens() else { throw GoogleCalendarError.notAuthenticated }
+        do {
+            try await deleteEventVoice(id: id, accessToken: bundle.accessToken)
+            return true
+        } catch GoogleCalendarError.requestFailed(let status, _) where status == 401 {
+            let refreshed = try await refreshAccessToken(clientId: clientId)
+            try await deleteEventVoice(id: id, accessToken: refreshed)
+            return true
+        }
+    }
+
+    private func deleteEventVoice(id: String, accessToken: String) async throws {
+        let url = URL(string: "\(Self.apiBase)/calendars/\(Self.writeCalendarId)/events/\(Self.encodePathSegment(id))")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            if http.statusCode == 404 || http.statusCode == 410 { return }   // already gone
+            let detail = String(data: data, encoding: .utf8) ?? "<no body>"
+            throw GoogleCalendarError.requestFailed(status: http.statusCode, detail: detail)
+        }
+    }
+
     private static func eventBody(title: String, start: Date, end: Date) -> [String: Any] {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
@@ -440,4 +614,11 @@ final class GoogleCalendarService {
         }
         return nil
     }
+}
+
+/// Supplies the presentation anchor (window) for ASWebAuthenticationSession.
+private final class PresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let anchor: ASPresentationAnchor
+    init(anchor: ASPresentationAnchor) { self.anchor = anchor }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { anchor }
 }
