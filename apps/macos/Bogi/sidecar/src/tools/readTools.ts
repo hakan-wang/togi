@@ -40,7 +40,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const hi = normalizeBound(end, "end");
         const cap = limit ?? 20;
         const rows = db.prepare(
-          `SELECT s.start_at AS start_at, s.category AS category, s.on_task AS on_task, f.description AS description
+          `SELECT s.start_at AS start_at, s.cat AS category, s.on_task AS on_task, f.description AS description
              FROM segment_fts f JOIN activity_segments s ON s.id = f.segment_id
             WHERE segment_fts MATCH ?
               AND (? IS NULL OR datetime(s.start_at) >= datetime(?))
@@ -87,7 +87,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const lo = normalizeBound(start, "start");
         const hi = normalizeBound(end, "end");
         const segs = db.prepare(
-          `SELECT minutes, category, on_task FROM activity_segments
+          `SELECT minutes, cat AS category, on_task FROM activity_segments
             WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)`
         ).all(lo, hi) as { minutes: number; category: string | null; on_task: number | null }[];
         const blocks = db.prepare(
@@ -181,5 +181,63 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
     }
   );
 
-  return [search_activity, summarize_range, list_days, list_goals];
+  const list_categories = tool(
+    async () => {
+      const db = open();
+      try {
+        const rows = db.prepare(
+          `SELECT id, name, color, description FROM category_registry ORDER BY sort_order`
+        ).all();
+        return JSON.stringify({ categories: rows });
+      } finally { db.close(); }
+    },
+    {
+      name: "list_categories",
+      description: "List the user's current categories (id, name, color). Call this before labeling activity so you reuse an existing category when one fits.",
+      schema: z.object({}),
+    }
+  );
+
+  const read_behaviour = tool(
+    async () => {
+      const db = open();
+      try {
+        const get = (k: string) => (db.prepare(`SELECT value FROM settings WHERE key = ?`).get(k) as any)?.value ?? null;
+        return JSON.stringify({
+          name: get("user_display_name"),
+          northStar: get("north_star"),
+          northStarWhy: get("north_star_why"),
+          behaviour: get("behaviour_profile"),
+        });
+      } finally { db.close(); }
+    },
+    {
+      name: "read_behaviour",
+      description: "Recall what you know about the user: their name, their north-star goal (and why), and the behaviour patterns you have learned. Call before judging activity or answering questions about their habits.",
+      schema: z.object({}),
+    }
+  );
+
+  const list_events = tool(
+    async ({ start, end }) => {
+      const db = open();
+      try {
+        const lo = normalizeBound(start, "start");
+        const hi = normalizeBound(end, "end");
+        const rows = db.prepare(
+          `SELECT id, title, desc, cat, sub, start_at, end_at FROM user_events
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?)
+            ORDER BY start_at`
+        ).all(lo, hi);
+        return JSON.stringify({ events: rows });
+      } finally { db.close(); }
+    },
+    {
+      name: "list_events",
+      description: "List the user's real-world commitments (gym, meetings, appointments) in a date range.",
+      schema: z.object({ start: z.string(), end: z.string() }),
+    }
+  );
+
+  return [search_activity, summarize_range, list_days, list_goals, list_categories, read_behaviour, list_events];
 }
