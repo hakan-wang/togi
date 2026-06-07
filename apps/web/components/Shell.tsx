@@ -64,19 +64,22 @@ const PINNED_CTX: CapContext = { title: JUST_ENDED.block, domain: JUST_ENDED.dom
 function blockCtx(b: any): CapContext {
   const planId = b.slot || b.id;
   const win = b.start != null && b.end != null ? `${fmt(b.start)}–${fmt(b.end)}` : undefined;
-  return { title: b.title, domain: b.domain as Domain, planId, window: win, kind: "checkin", prompt: `${b.title} — what really happened?` };
+  return { title: b.title, domain: b.domain as Domain, planId, window: win, kind: "checkin", prompt: `Tell Togi what you did — what really happened with “${b.title}”?` };
 }
 function blockCtxByName(name: string): CapContext {
   const p = PLAN.find((x) => x.title === name);
   if (p) return blockCtx({ ...p, slot: p.id });
-  return { title: name, domain: "Work", kind: "checkin", prompt: `${name} — what really happened?` };
+  return { title: name, domain: "Work", kind: "checkin", prompt: `Tell Togi what you did — “${name}”?` };
 }
 function selfCtx(label: string): CapContext {
-  return { title: "Untracked time", domain: "Leisure", window: label, kind: "self", prompt: `Nothing was planned ${label} — what did you actually get up to?` };
+  return { title: "Untracked time", domain: "Leisure", window: label, kind: "self", prompt: `Tell Togi what you did ${label}.` };
 }
-function planCtx(): CapContext {
-  return { title: "Plan", domain: "Work", kind: "plan", prompt: 'What do you want to get done? Say it with a rough time — e.g. "edit the vlog for 2h in the afternoon".' };
+// Plan vs check-in for a tapped block/gap depends on the toggle + whether it's in the past.
+function planAtCtx(b?: any): CapContext {
+  const win = b && b.start != null && b.end != null ? `${fmt(b.start)}–${fmt(b.end)}` : undefined;
+  return { title: "Plan", domain: "Work", window: win, kind: "plan", prompt: "Plan smarter with Togi — what do you want to get done?" };
 }
+function planCtx(): CapContext { return planAtCtx(); }
 
 export function TogiAppB() {
   const [tab, setTab] = useState("today");
@@ -327,8 +330,8 @@ export function TogiAppB() {
               <DayCalendar view={view} setView={setView} real={realForDay} plan={planForDay} now={nowMin} selectedDate={selectedDate} density="regular"
                 onSelectDay={(key: string) => setSelectedDate(key)}
                 onPlanDay={(key: string) => { setSelectedDate(key); setCapture({ context: planCtx(), plan: true }); }}
-                onSelfCheckin={(label: string) => setCapture({ context: selfCtx(label) })}
-                onTalkBlock={(b: any) => setCapture({ context: blockCtx(b) })}
+                onSelfCheckin={(label: string) => { const wantPlan = view === "plan" || selectedDate > today; setCapture(wantPlan ? { context: planCtx(), plan: true } : { context: selfCtx(label) }); }}
+                onTalkBlock={(b: any) => { const future = selectedDate > today || (selectedDate === today && (b.start ?? 0) > nowMin); const wantPlan = view === "plan" || future; setCapture(wantPlan ? { context: planAtCtx(b), plan: true } : { context: blockCtx(b) }); }}
                 onEditBlock={calConnected ? (b: PlanBlock) => setGcalEditor({ block: b }) : undefined} />
             </div>
           </div>
