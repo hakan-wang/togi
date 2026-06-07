@@ -10,6 +10,8 @@ final class JudgeCoordinator {
     private let blocks: PlannedBlockRepository
     private let segments: SegmentStore
     private let sidecar: SidecarClient
+    private let events: UserEventRepository?
+    private let goals: GoalsService?
     private let interval: TimeInterval
     /// Rolling window for the off-task minutes fed into nudge urgency (60 min).
     private let offTaskWindow: TimeInterval = 3600
@@ -19,11 +21,15 @@ final class JudgeCoordinator {
          blocks: PlannedBlockRepository,
          segments: SegmentStore,
          sidecar: SidecarClient,
+         events: UserEventRepository? = nil,
+         goals: GoalsService? = nil,
          interval: TimeInterval = 300) {
         self.observations = observations
         self.blocks = blocks
         self.segments = segments
         self.sidecar = sidecar
+        self.events = events
+        self.goals = goals
         self.interval = interval
     }
 
@@ -40,23 +46,39 @@ final class JudgeCoordinator {
         timer = nil
     }
 
-    /// One judge cycle. Public so a "Check in now" action can trigger it on demand.
+    /// One judge cycle. Public so a "Check in now" action can trigger it on demand. Runs when
+    /// there are recent observations OR a check-in is due (so proactive check-ins fire even on a
+    /// quiet screen).
     func tick() async {
         let now = Date()
         let recent = observations.recent(within: interval, now: now)
-        guard !recent.isEmpty else { return }
+        let due = events?.dueCheckIns(asOf: now) ?? []
+        guard !recent.isEmpty || !due.isEmpty else { return }
 
         let obs = recent.map {
             (t: $0.capturedAt, app: $0.activeApp, window: $0.activeWindowTitle,
              text: $0.text, focused: $0.focused)
         }
         let active = blocks.activeBlock(at: now)
-        let input = JudgeInput(
-            activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
+        let activeEvents = (events?.events(overlapping: now) ?? [])
+            .filter { $0.goalId == nil }
+            .map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) }
+        var input = JudgeInput(
+            activeBlock: active.map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
-            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now)
+            recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now),
+            activeEvents: activeEvents
         )
+        input.activeGoals = goals?.all(status: "active").map {
+            (id: $0.id, title: $0.title, status: $0.status, cat: $0.cat)
+        } ?? []
+        input.dueCheckIns = due.map { (eventId: $0.id, goalId: $0.goalId, title: $0.title) }
+
         let payload = JudgePrompt.userJSON(input)
-        _ = try? await sidecar.judge(payload, threadId: "judge")
+        let reply = try? await sidecar.judge(payload, threadId: "judge")
+        // Surface each due check-in once, but only remove it after a successful dispatch so a
+        // transport failure does not silently drop it. Recurrence is the agent scheduling the
+        // next add_event when it logs the check-in outcome.
+        if reply != nil { due.forEach { events?.delete(id: $0.id) } }
     }
 }

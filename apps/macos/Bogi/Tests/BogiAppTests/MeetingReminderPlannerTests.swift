@@ -9,7 +9,7 @@ final class MeetingReminderPlannerTests: XCTestCase {
         return PlannedBlock(
             id: id, source: "google", externalEventId: id, title: title,
             startAt: start, endAt: start.addingTimeInterval(1800),
-            category: nil, goalId: nil, status: status, createdByBogi: false, updatedAt: now)
+            cat: nil, sub: nil, desc: nil, goalId: nil, status: status, createdByBogi: false, updatedAt: now)
     }
 
     func testFiresEachThresholdOnceAsTimeAdvances() {

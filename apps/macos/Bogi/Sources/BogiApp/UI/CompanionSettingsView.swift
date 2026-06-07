@@ -1,8 +1,8 @@
 import SwiftUI
 import AppKit
 
-/// In-panel settings page (the ⚙ tab of the companion): connect Google Calendar, pause
-/// capture, and sign in. Lives inside the floating panel so everything is in one place.
+/// In-panel settings page (the ⚙ tab of the companion): meeting reminders, pause capture,
+/// and sign in. Lives inside the floating panel so everything is in one place.
 struct CompanionSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var remindBeforeMeetings = true
@@ -11,16 +11,6 @@ struct CompanionSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                section("Calendar") {
-                    if let sync = appState.calendarSync {
-                        GoogleCalendarRow(sync: sync)
-                    } else {
-                        ProgressView()
-                    }
-                }
-
-                Divider().opacity(0.4)
-
                 section("Meetings") {
                     Toggle("Remind me before meetings (30 / 15 / 5 min)", isOn: $remindBeforeMeetings)
                         .toggleStyle(.switch)

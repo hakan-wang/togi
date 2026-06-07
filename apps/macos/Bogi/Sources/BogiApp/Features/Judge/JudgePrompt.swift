@@ -3,9 +3,12 @@ import Foundation
 /// Everything the judge needs for one 5-minute tick: the active calendar block (if any),
 /// the recent observations, and how long the user has already drifted off-task.
 struct JudgeInput {
-    var activeBlock: (title: String, category: String?, startAt: Date, endAt: Date)?
+    var activeBlock: (title: String, cat: String?, startAt: Date, endAt: Date)?
     var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
+    var activeEvents: [(title: String, cat: String?, startAt: Date, endAt: Date)] = []
+    var activeGoals: [(id: String, title: String, status: String, cat: String?)] = []
+    var dueCheckIns: [(eventId: String, goalId: String?, title: String)] = []
 }
 
 /// Builds the user payload for the activity judge tick. Pure string construction so the
@@ -16,7 +19,7 @@ enum JudgePrompt {
     // {
     //   "segments": [
     //     { "start_at": ISO8601, "end_at": ISO8601, "minutes": Double,
-    //       "category": String, "sub_category": String, "sub_sub": String,
+    //       "cat": String, "sub": String, "title": String, "desc": String,
     //       "on_task": Bool, "confidence": Double }
     //   ],
     //   "nudge": { "should": Bool, "severity": Int, "message": String? }
@@ -38,13 +41,39 @@ enum JudgePrompt {
                 "start_at": iso.string(from: block.startAt),
                 "end_at": iso.string(from: block.endAt),
             ]
-            if let category = block.category { b["category"] = category }
+            if let cat = block.cat { b["cat"] = cat }
             root["planned_block"] = b
         } else {
             root["planned_block"] = NSNull()
         }
 
         root["recent_off_task_minutes"] = input.recentOffTaskMinutes
+
+        if !input.activeEvents.isEmpty {
+            root["active_events"] = input.activeEvents.map { e -> [String: Any] in
+                var o: [String: Any] = ["title": e.title,
+                                        "start_at": iso.string(from: e.startAt),
+                                        "end_at": iso.string(from: e.endAt)]
+                if let cat = e.cat { o["cat"] = cat }
+                return o
+            }
+        }
+
+        if !input.activeGoals.isEmpty {
+            root["active_goals"] = input.activeGoals.map { g -> [String: Any] in
+                var o: [String: Any] = ["id": g.id, "title": g.title, "status": g.status]
+                if let cat = g.cat { o["cat"] = cat }
+                return o
+            }
+        }
+
+        if !input.dueCheckIns.isEmpty {
+            root["due_check_ins"] = input.dueCheckIns.map { c -> [String: Any] in
+                var o: [String: Any] = ["event_id": c.eventId, "title": c.title]
+                if let goalId = c.goalId { o["goal_id"] = goalId }
+                return o
+            }
+        }
 
         root["observations"] = input.observations.map { obs -> [String: Any] in
             var o: [String: Any] = ["t": iso.string(from: obs.t), "focused": obs.focused]
