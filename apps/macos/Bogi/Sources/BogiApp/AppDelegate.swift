@@ -15,6 +15,8 @@ final class AppState: ObservableObject {
 
     let observations: ObservationStore
     let segments: SegmentStore
+    let categories: CategoryRepository
+    let userEvents: UserEventRepository
     let plannedBlocks: PlannedBlockRepository
     let planner: PlannerService
     let eventKit: EventKitService
@@ -95,6 +97,8 @@ final class AppState: ObservableObject {
         let plannedBlocks = PlannedBlockRepository(database: database)
         self.observations = ObservationStore(database: database)
         self.segments = SegmentStore(database: database)
+        self.categories = CategoryRepository(database: database)
+        self.userEvents = UserEventRepository(database: database)
         self.plannedBlocks = plannedBlocks
         self.eventKit = EventKitService()
         self.googleCalendar = GoogleCalendarService()
@@ -328,6 +332,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let presenter = self.presenter
         let segmentStore = appState.segments
         let search = appState.search
+        let categories = appState.categories
+        let userEvents = appState.userEvents
+        let settings = appState.settings
         let actions = SidecarActionHandlers(
             createBlock: { title, start, end in
                 await MainActor.run {
@@ -346,6 +353,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.applyNudge(decision, onTask: false)
                 }
             },
+            manageCategories: { op, args in
+                await MainActor.run {
+                    switch op {
+                    case "add":
+                        guard let name = args["name"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return categories.add(name: name, color: args["color"] as? String, description: args["description"] as? String) != nil
+                            ? ["ok": true] : ["ok": false, "error": "exists_or_bad"]
+                    case "rename":
+                        guard let id = args["id"] as? String, let name = args["name"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.rename(id: id, name: name)]
+                    case "recolor":
+                        guard let id = args["id"] as? String, let color = args["color"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.recolor(id: id, color: color)]
+                    case "merge":
+                        guard let from = args["from"] as? String, let into = args["into"] as? String else { return ["ok": false, "error": "bad_input"] }
+                        return ["ok": categories.merge(from: from, into: into)]
+                    default:
+                        return ["ok": false, "error": "unknown_op"]
+                    }
+                }
+            },
+            writeBehaviour: { text in
+                await MainActor.run { settings.set("behaviour_profile", text) }
+            },
+            categoryExists: { id in
+                await MainActor.run { categories.exists(id) }
+            },
             recordSegments: { segs in
                 await MainActor.run {
                     segs.forEach {
@@ -355,6 +389,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     return segs.count
                 }
+            },
+            addEvent: { event in
+                await MainActor.run { userEvents.insert(event); return event.id }
             })
         appState.sidecar.actionHandler = { name, input in await actions.handle(name, input) }
 
@@ -370,7 +407,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             observations: appState.observations,
             blocks: appState.plannedBlocks,
             segments: appState.segments,
-            sidecar: appState.sidecar
+            sidecar: appState.sidecar,
+            events: userEvents
         )
         coordinator.start()
         self.coordinator = coordinator
