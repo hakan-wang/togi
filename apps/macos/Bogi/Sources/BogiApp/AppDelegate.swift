@@ -321,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // First launch only: run onboarding once, after login, before the mascot/capture loop.
         // The flag is written by the coordinator's finish() (settings.setBool("onboarding_completed", true)).
         if !appState.settings.bool("onboarding_completed", default: false) {
-            presentOnboarding { [weak self] in self?.startMainExperience() }
+            presentOnboarding { [weak self] in self?.startMainExperience(firstRun: true) }
             return
         }
         startMainExperience()
@@ -350,7 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.present()
     }
 
-    private func startMainExperience() {
+    private func startMainExperience(firstRun: Bool = false) {
         // First launch: opt into launch-at-login so Togi reappears every login with no setup.
         // Gated behind unlock so we only auto-launch for real (signed-in) users, not someone
         // who opened the app once and bounced off the login screen. Only on the very first
@@ -366,7 +366,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let mascot = MascotPanel()
         mascot.onActivate = { [weak self] in self?.toggleCompanion() }
-        if appState.mascotVisible { mascot.show() }
+        if appState.mascotVisible {
+            // First launch after onboarding gets the one-time swoop + intro bubble; every later
+            // launch just reveals the mascot at its last spot.
+            if firstRun { mascot.presentWithIntro() } else { mascot.show() }
+        }
         self.mascot = mascot
         appState.onMascotVisibilityChanged = { [weak self] visible in
             if visible { self?.mascot?.show() } else { self?.mascot?.hide() }
