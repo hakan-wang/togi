@@ -42,5 +42,47 @@ export function makeActionTools(callAction: CallAction): StructuredToolInterface
     }
   );
 
-  return [create_block, move_block, post_nudge];
+  const manage_categories = tool(
+    async (input) => JSON.stringify(await callAction("manage_categories", input)),
+    {
+      name: "manage_categories",
+      description: "Curate the user's category list. op 'add' (name, color?, description?), 'rename' (id, name), 'recolor' (id, color), or 'merge' (from, into). merge reassigns that category across ALL the user's past activity, plans, and events, then deletes it, so use it deliberately.",
+      schema: z.object({
+        op: z.enum(["add", "rename", "recolor", "merge"]),
+        id: z.string().nullish(),
+        name: z.string().nullish(),
+        color: z.string().nullish(),
+        description: z.string().nullish(),
+        from: z.string().nullish(),
+        into: z.string().nullish(),
+      }),
+    }
+  );
+
+  const write_behaviour = tool(
+    async (input) => JSON.stringify(await callAction("write_behaviour", input)),
+    {
+      name: "write_behaviour",
+      description: "Save what you have learned about how the user works. REPLACES the whole learned-behaviour note (keep prior insights you still believe). Does not touch their name or north star. Keep it a short bulleted profile.",
+      schema: z.object({ text: z.string() }),
+    }
+  );
+
+  const add_event = tool(
+    async (input) => JSON.stringify(await callAction("add_event", input)),
+    {
+      name: "add_event",
+      description: "Record a real-world commitment the user mentions (meeting, gym, appointment). Resolve relative times against the current time. cat, if given, must be an existing category.",
+      schema: z.object({
+        title: z.string(),
+        start: z.string(),
+        end: z.string(),
+        cat: z.string().nullish(),
+        sub: z.string().nullish(),
+        desc: z.string().nullish(),
+      }),
+    }
+  );
+
+  return [create_block, move_block, post_nudge, manage_categories, write_behaviour, add_event];
 }
