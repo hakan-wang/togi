@@ -10,6 +10,9 @@
     <key>CFBundleDisplayName</key>     <string>Togi</string>
     <key>CFBundleIdentifier</key>      <string>sh.bogi.app</string>
     <key>CFBundleExecutable</key>      <string>Bogi</string>
+    <!-- App icon: Togi.icns is copied into Contents/Resources by Packaging/build-app.sh.
+         CFBundleIconFile is the basename (the .icns extension is implied). -->
+    <key>CFBundleIconFile</key>        <string>Togi</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleShortVersionString</key> <string>0.1.0</string>
     <key>CFBundleVersion</key>         <string>1</string>

@@ -27,6 +27,9 @@ cp "$PKG/Info.plist" "$APP/Contents/Info.plist"
 # exists in a shipped app, so it crashes off-machine; and a .bundle under Contents/MacOS
 # is unsigned nested code that breaks codesign. See BogiTheme.swift / Package.swift.)
 cp "Sources/BogiApp/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
+# App icon. CFBundleIconFile=Togi in Info.plist points here; macOS loads it for the
+# Finder/Dock/About icon. Must live directly in Contents/Resources.
+cp "$PKG/Togi.icns" "$APP/Contents/Resources/Togi.icns"
 
 echo "== sidecar (Node + LangChain.js agent) =="
 SIDECAR_SRC="sidecar"
