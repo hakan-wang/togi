@@ -28,4 +28,18 @@ final class UserEventRepository {
                 .fetchAll(db)
         }) ?? []
     }
+
+    /// Events attached to a goal (its scheduled check-ins), soonest first.
+    func events(forGoal goalId: String) -> [UserEvent] {
+        (try? database.dbQueue.read { db in
+            try UserEvent
+                .filter(Column("goal_id") == goalId)
+                .order(Column("start_at"))
+                .fetchAll(db)
+        }) ?? []
+    }
+
+    func delete(id: String) {
+        try? database.dbQueue.write { db in _ = try UserEvent.deleteOne(db, key: id) }
+    }
 }
