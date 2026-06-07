@@ -47,7 +47,7 @@ final class SidecarGoalsHandlerTests: XCTestCase {
             addEvent: { ev in seen = ev; return ev.id })
         let out = await h.handle("add_event", [
             "title": "Check in", "start": "2026-06-08T18:00:00Z", "end": "2026-06-08T18:05:00Z",
-            "cat": "checkin", "goal_id": "g1"])
+            "goal_id": "g1"])
         XCTAssertEqual(out["ok"] as? Bool, true)
         XCTAssertEqual(seen?.goalId, "g1")
     }
