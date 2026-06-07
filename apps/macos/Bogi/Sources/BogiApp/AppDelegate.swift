@@ -334,7 +334,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             northStar: appState.northStar,
             capture: appState.capture,
             planner: appState.planner,
-            googleCalendar: appState.googleCalendar,
             settings: appState.settings,
             auth: appState.auth,
             notifications: NotificationAuthorizer(),

@@ -10,8 +10,6 @@ final class OnboardingCoordinator: ObservableObject {
     @Published var name: String
     @Published var northStarText: String = ""
     @Published var northStarWhy: String = ""
-    @Published var rhythm: CheckInRhythm = .both
-    @Published var calendarConnected = false
     @Published var accessibilityGranted: Bool
     @Published var busy = false
     @Published var errorText: String?
@@ -25,7 +23,6 @@ final class OnboardingCoordinator: ObservableObject {
     private let northStar: NorthStarService
     private let capture: CaptureController
     private let planner: PlannerService
-    private let googleCalendar: GoogleCalendarService
     private let settings: SettingsStore
     private let auth: SupabaseAuth
     private let notifications: NotificationAuthorizer
@@ -34,7 +31,6 @@ final class OnboardingCoordinator: ObservableObject {
     init(northStar: NorthStarService,
          capture: CaptureController,
          planner: PlannerService,
-         googleCalendar: GoogleCalendarService,
          settings: SettingsStore,
          auth: SupabaseAuth,
          notifications: NotificationAuthorizer,
@@ -42,7 +38,6 @@ final class OnboardingCoordinator: ObservableObject {
         self.northStar = northStar
         self.capture = capture
         self.planner = planner
-        self.googleCalendar = googleCalendar
         self.settings = settings
         self.auth = auth
         self.notifications = notifications
@@ -82,24 +77,6 @@ final class OnboardingCoordinator: ObservableObject {
         advance()
     }
 
-    func connectCalendar() async {
-        guard !busy else { return }
-        busy = true
-        errorText = nil
-        do {
-            // Loopback OAuth (Erik's flow): opens the default browser, no in-app web sheet needed.
-            try await googleCalendar.authorize(clientId: GoogleConfig.clientID, clientSecret: GoogleConfig.clientSecret)
-            settings.setBool("google_connected", true)
-            NSApp.activate(ignoringOtherApps: true)
-            calendarConnected = true
-            busy = false
-            advance()
-        } catch {
-            busy = false
-            errorText = "Couldn't connect to Google. Try again, or connect later."
-        }
-    }
-
     func requestAccessibility() {
         capture.requestPermission()
     }
@@ -111,11 +88,6 @@ final class OnboardingCoordinator: ObservableObject {
 
     func requestNotifications() async {
         _ = await notifications.request()
-        advance()
-    }
-
-    func saveRhythm() {
-        settings.set("checkin_rhythm", rhythm.rawValue)
         advance()
     }
 
@@ -132,7 +104,6 @@ final class OnboardingCoordinator: ObservableObject {
         settings.setBool("onboarding_completed", true)
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         if !trimmedName.isEmpty { settings.set("user_display_name", trimmedName) }
-        settings.set("checkin_rhythm", rhythm.rawValue)
         onFinish()
     }
 

@@ -1,40 +1,21 @@
 import Foundation
 import UserNotifications
 
-/// The eight first-run beats, in order. Raw values drive the progress dots and navigation.
+/// The first-run beats, in order. Raw values drive the progress dots and navigation.
 enum OnboardingStep: Int, CaseIterable {
     case welcome
     case name
     case northStar
-    case calendar
     case accessibility
     case notifications
-    case rhythm
     case magicMoment
 
     /// Steps the user may skip. The North Star is encouraged but never forced; Accessibility is
     /// the one the product really needs, but we still never hard-trap the user on it.
     var isSkippable: Bool {
         switch self {
-        case .calendar, .notifications, .rhythm, .northStar: return true
+        case .notifications, .northStar: return true
         default: return false
-        }
-    }
-}
-
-/// How often Togi checks in. Stored as the raw string in settings ("checkin_rhythm").
-enum CheckInRhythm: String, CaseIterable, Identifiable {
-    case morning
-    case evening
-    case both
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .morning: return "morning plan"
-        case .evening: return "evening review"
-        case .both: return "both"
         }
     }
 }

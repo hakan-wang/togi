@@ -59,10 +59,8 @@ struct OnboardingView: View {
         case .welcome: welcome
         case .name: nameStep
         case .northStar: northStarStep
-        case .calendar: calendarStep
         case .accessibility: accessibilityStep
         case .notifications: notificationsStep
-        case .rhythm: rhythmStep
         case .magicMoment: magicMomentStep
         }
     }
@@ -127,25 +125,6 @@ struct OnboardingView: View {
         }
     }
 
-    private var calendarStep: some View {
-        VStack(spacing: 18) {
-            Spacer()
-            Image(systemName: "calendar")
-                .font(.system(size: 50)).foregroundStyle(BogiColor.primary)
-            heading("Let's see where your time already goes.",
-                    "Connect your calendar and I can show you what's already committed, then help you protect real time for your North Star. Your calendar stays on this Mac.")
-            if let error = coordinator.errorText {
-                Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
-            }
-            Spacer()
-            primaryButton(coordinator.busy ? "connecting…" : "connect google calendar",
-                          enabled: !coordinator.busy) {
-                Task { await coordinator.connectCalendar() }
-            }
-            secondaryButton("connect later") { coordinator.skip() }
-        }
-    }
-
     private var accessibilityStep: some View {
         VStack(spacing: 18) {
             Spacer()
@@ -177,24 +156,6 @@ struct OnboardingView: View {
             Spacer()
             primaryButton("turn on notifications") { Task { await coordinator.requestNotifications() } }
             secondaryButton("maybe later") { coordinator.skip() }
-        }
-    }
-
-    private var rhythmStep: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            heading("When should we check in?",
-                    "Pick the rhythm that fits you. We can plan the day in the morning, look back in the evening, or both. You can change this anytime.")
-            Picker("", selection: $coordinator.rhythm) {
-                ForEach(CheckInRhythm.allCases) { rhythm in
-                    Text(rhythm.label).tag(rhythm)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 340)
-            Spacer()
-            primaryButton("set my rhythm") { coordinator.saveRhythm() }
         }
     }
 
