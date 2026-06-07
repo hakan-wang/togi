@@ -55,12 +55,72 @@ final class MascotPanel: NSPanel {
         // Bottom-right of the main screen as a default resting spot — only on the
         // first reveal. Subsequent shows (e.g. after hide, or a nudge auto-reappear)
         // keep the position the user last dragged the mascot to.
-        if !hasSetInitialPosition, let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            setFrameOrigin(NSPoint(x: frame.maxX - 264, y: frame.minY + 72))
+        if !hasSetInitialPosition, let resting = Self.restingOrigin() {
+            setFrameOrigin(resting)
             hasSetInitialPosition = true
         }
         orderFrontRegardless()
+    }
+
+    /// Default resting spot: bottom-right of the main screen's visible frame. `nil` when there's
+    /// no main screen, so callers can fall back to a plain reveal.
+    private static func restingOrigin() -> NSPoint? {
+        guard let screen = NSScreen.main else { return nil }
+        let frame = screen.visibleFrame
+        return NSPoint(x: frame.maxX - 264, y: frame.minY + 72)
+    }
+
+    /// One-time copy shown the first time the mascot appears, right after onboarding.
+    private static let introCopy =
+        "Click me anytime to open up — ask me anything. I'm always learning, so I won't know much about you yet."
+
+    /// First reveal after onboarding: place the mascot where the onboarding card was (screen
+    /// centre), fly it to its bottom-right resting spot, then drop in the intro bubble. Falls back
+    /// to a plain `show()` if there's no main screen, and skips the flight under Reduce Motion.
+    func presentWithIntro() {
+        guard let resting = Self.restingOrigin(), let screen = NSScreen.main else {
+            show()
+            showIntroBubble()
+            return
+        }
+        // Mark placed so a later show() won't re-snap the mascot away from where it ends up.
+        hasSetInitialPosition = true
+
+        let visible = screen.visibleFrame
+        let size = frame.size
+        let start = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
+        setFrameOrigin(start)
+        orderFrontRegardless()
+
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            setFrameOrigin(resting)
+            showIntroBubble()
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.6
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().setFrameOrigin(resting)
+        }, completionHandler: { [weak self] in
+            // The completion handler is delivered on the main thread, so it's safe to hop back
+            // onto the main actor synchronously to show the (main-actor-isolated) bubble.
+            MainActor.assumeIsolated { self?.showIntroBubble() }
+        })
+    }
+
+    /// Show the intro bubble and auto-dismiss it after ~6s — but only if the user hasn't already
+    /// dismissed it (via the × or by clicking the mascot), which `introActive` tells us.
+    private func showIntroBubble() {
+        viewModel.mood = .idle
+        viewModel.escalationLevel = 0
+        viewModel.bubbleText = Self.introCopy
+        viewModel.introActive = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, self.viewModel.introActive else { return }
+            self.viewModel.dismissIntro()
+        }
     }
 
     /// Take the mascot off-screen without tearing down the panel. `show()` brings it
