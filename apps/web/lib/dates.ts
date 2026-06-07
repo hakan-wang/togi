@@ -23,9 +23,10 @@ export function weekDays(): WeekDay[] {
   return out;
 }
 
-/** "Sunday · 7 June" style label for a day key. */
-export function dayLabel(key: string): string {
-  const [y, m, d] = key.split("-").map(Number);
+/** "Sunday · 7 June" style label for a day key. Falls back to today if missing. */
+export function dayLabel(key?: string): string {
+  const k = key || dayKey();
+  const [y, m, d] = k.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   return dt.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
