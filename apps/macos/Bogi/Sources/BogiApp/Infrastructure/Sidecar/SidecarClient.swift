@@ -11,6 +11,12 @@ final class SidecarClient {
     private let lock = NSLock()
     private let restartDelay: TimeInterval
     private var restartAttempts = 0
+    /// Per-request watchdogs, keyed by request id. Each fires if the sidecar goes quiet for
+    /// `requestTimeout`; streamed token frames reset it so a long, actively-streaming reply
+    /// isn't cut off. Without this a silent/wedged sidecar would hang the caller forever.
+    private var timeouts: [String: DispatchWorkItem] = [:]
+    private let requestTimeout: TimeInterval
+    private let timeoutQueue = DispatchQueue(label: "com.bogi.sidecar.timeout")
     /// Returns a JSON-encodable result for an action call (name, input) -> result.
     var actionHandler: ((_ name: String, _ input: [String: Any]) async -> [String: Any])?
     /// Supplies a fresh auth token for each outgoing chat/plan/judge request. The token
@@ -19,9 +25,11 @@ final class SidecarClient {
     /// its launch-time env token.
     var tokenProvider: (() async -> String?)?
 
-    init(transport: SidecarTransport, restartDelay: TimeInterval = 1.0) {
+    init(transport: SidecarTransport, restartDelay: TimeInterval = 1.0,
+         requestTimeout: TimeInterval = 120) {
         self.transport = transport
         self.restartDelay = restartDelay
+        self.requestTimeout = requestTimeout
         self.transport.onLine = { [weak self] line in self?.handle(line) }
         self.transport.onTerminate = { [weak self] in self?.handleTermination() }
     }
@@ -55,6 +63,10 @@ final class SidecarClient {
 
     private func request(kind: String, threadId: String, text: String,
                          onToken: ((String) -> Void)? = nil) async throws -> String {
+        // Fail fast if the sidecar isn't alive (e.g. it never launched): writing into a dead
+        // pipe would otherwise block the caller until the watchdog fires, with no real chance
+        // of a reply. Surfaces as "togi couldn't answer…" instead of a frozen spinner.
+        guard transport.isRunning else { throw SidecarError.notRunning }
         let id = nextId()
         // Fetch a fresh auth token per request (it rotates ~hourly). Omitted when no
         // provider is set so the sidecar falls back to its launch-time env token.
@@ -67,9 +79,23 @@ final class SidecarClient {
             lock.lock()
             pending[id] = cont
             if let onToken { tokenHandlers[id] = onToken }
+            armTimeout(id)
             lock.unlock()
             transport.send(line)
         }
+    }
+
+    /// (Re)arm the watchdog for `id`. Caller must hold `lock`. Cancels any prior timer for the
+    /// id and schedules a fresh one; if no result/token arrives within `requestTimeout`, the
+    /// request fails with `.timedOut`. No-op once the id is no longer pending.
+    private func armTimeout(_ id: String) {
+        guard pending[id] != nil else { return }
+        timeouts[id]?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.resolve(id, .failure(SidecarError.timedOut))
+        }
+        timeouts[id] = item
+        timeoutQueue.asyncAfter(deadline: .now() + requestTimeout, execute: item)
     }
 
     private func handle(_ line: String) {
@@ -81,7 +107,8 @@ final class SidecarClient {
         switch kind {
         case "token":
             guard let id = obj["id"] as? String, let text = obj["text"] as? String else { return }
-            lock.lock(); let handler = tokenHandlers[id]; lock.unlock()
+            // Streaming activity resets the watchdog so a long, live reply isn't cut off.
+            lock.lock(); let handler = tokenHandlers[id]; armTimeout(id); lock.unlock()
             handler?(text)
         case "result":
             guard let id = obj["id"] as? String else { return }
@@ -113,11 +140,14 @@ final class SidecarClient {
         // Fail all in-flight requests so callers do not hang.
         lock.lock()
         let waiting = pending
+        let timers = timeouts
         pending.removeAll()
         tokenHandlers.removeAll()
+        timeouts.removeAll()
         restartAttempts += 1
         let attempt = restartAttempts
         lock.unlock()
+        timers.values.forEach { $0.cancel() }
         for (_, cont) in waiting { cont.resume(throwing: SidecarError.terminated) }
 
         // Restart after an exponential, capped backoff. A successful decode resets the counter.
@@ -131,7 +161,9 @@ final class SidecarClient {
         lock.lock()
         let cont = pending.removeValue(forKey: id)
         tokenHandlers.removeValue(forKey: id)
+        let timer = timeouts.removeValue(forKey: id)
         lock.unlock()
+        timer?.cancel()
         switch result {
         case .success(let s): cont?.resume(returning: s)
         case .failure(let e): cont?.resume(throwing: e)
@@ -139,4 +171,18 @@ final class SidecarClient {
     }
 }
 
-enum SidecarError: Error { case remote(String); case terminated }
+enum SidecarError: Error, LocalizedError {
+    case remote(String)
+    case terminated
+    case timedOut
+    case notRunning
+
+    var errorDescription: String? {
+        switch self {
+        case .remote(let m): return m
+        case .terminated: return "the agent stopped unexpectedly"
+        case .timedOut: return "the agent took too long to respond"
+        case .notRunning: return "the agent isn't running"
+        }
+    }
+}

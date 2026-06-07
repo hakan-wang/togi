@@ -128,11 +128,16 @@ export async function runStdio(): Promise<void> {
   // captured at launch.
   let currentToken = envToken;
   const getToken = () => currentToken || envToken;
+  // Per-call HTTP timeout so a wedged backend connection fails the dispatch (which emits an
+  // error frame the app surfaces) instead of hanging the request — and the chat spinner —
+  // forever. Belt-and-suspenders with the app-side request watchdog in SidecarClient.
+  const HTTP_TIMEOUT_MS = Number(process.env.BOGI_HTTP_TIMEOUT_MS) || 60_000;
   const post = async (body: unknown) => {
     const r = await fetch(`${baseURL}/v1/infer`, {
       method: "POST",
       headers: { "content-type": "application/json", "X-Bogi-Authorization": `Bearer ${getToken()}` },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
     });
     const raw = await r.text();
     if (!r.ok) throw new Error(`backend ${r.status}: ${raw.slice(0, 300)}`);

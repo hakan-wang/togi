@@ -6,18 +6,19 @@ final class FakeTransport: SidecarTransport {
     var onTerminate: (() -> Void)?
     private(set) var sent: [String] = []
     private(set) var startCount = 0
+    private(set) var isRunning = false
     /// Returns a single reply line for a sent request.
     var autoReply: ((String) -> String?)?
     /// Returns zero or more reply lines for a sent request (e.g. token frames + result).
     var autoReplies: ((String) -> [String])?
-    func start() throws { startCount += 1 }
-    func stop() {}
+    func start() throws { startCount += 1; isRunning = true }
+    func stop() { isRunning = false }
     func send(_ line: String) {
         sent.append(line)
         if let reply = autoReply?(line) { onLine?(reply) }
         if let replies = autoReplies?(line) { replies.forEach { onLine?($0) } }
     }
-    func simulateCrash() { onTerminate?() }
+    func simulateCrash() { isRunning = false; onTerminate?() }
 
     /// Extracts the request id from a JSON request line.
     static func idFrom(_ line: String) -> String? {
@@ -105,6 +106,52 @@ final class SidecarClientTests: XCTestCase {
         try client.start()
         _ = try await client.chat("hi", threadId: "t1")
         XCTAssertFalse(transport.sent.first?.contains("\"token\"") == true)
+    }
+
+    func testRequestTimesOutWhenSidecarStaysSilent() async throws {
+        let transport = FakeTransport()
+        transport.autoReply = { _ in nil }  // process is "running" but never answers
+        let client = SidecarClient(transport: transport, requestTimeout: 0.1)
+        try client.start()
+        do {
+            _ = try await client.chat("hi", threadId: "t1")
+            XCTFail("expected a timeout")
+        } catch let error as SidecarError {
+            guard case .timedOut = error else { return XCTFail("wrong error: \(error)") }
+        }
+    }
+
+    func testRequestFailsFastWhenSidecarNotRunning() async throws {
+        let transport = FakeTransport()  // never started → not running
+        let client = SidecarClient(transport: transport, requestTimeout: 5)
+        do {
+            _ = try await client.chat("hi", threadId: "t1")
+            XCTFail("expected a not-running failure")
+        } catch let error as SidecarError {
+            guard case .notRunning = error else { return XCTFail("wrong error: \(error)") }
+        }
+        XCTAssertTrue(transport.sent.isEmpty, "must not write into a dead pipe")
+    }
+
+    func testStreamedTokensKeepRequestAlivePastTimeout() async throws {
+        // A request that streams a token every 50ms must NOT trip a 0.15s inactivity timeout,
+        // because each token resets the watchdog. Final result arrives after ~200ms total.
+        let transport = FakeTransport()
+        let client = SidecarClient(transport: transport, requestTimeout: 0.15)
+        try client.start()
+        // Drive token/result frames out-of-band on a timer keyed to the sent request id. Capture
+        // the client's line handler so the async emits don't reference the transport directly.
+        transport.autoReply = { line in
+            guard let id = FakeTransport.idFrom(line), let emit = transport.onLine else { return nil }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { emit(#"{"kind":"token","id":"\#(id)","text":"a"}"#) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.10) { emit(#"{"kind":"token","id":"\#(id)","text":"b"}"#) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.20) { emit(#"{"kind":"result","id":"\#(id)","ok":true,"text":"ab"}"#) }
+            return nil
+        }
+        var streamed = ""
+        let result = try await client.chat("hi", threadId: "t", onToken: { streamed += $0 })
+        XCTAssertEqual(result, "ab")
+        XCTAssertEqual(streamed, "ab")
     }
 
     func testBackoffGrowsBetweenCrashes() async throws {

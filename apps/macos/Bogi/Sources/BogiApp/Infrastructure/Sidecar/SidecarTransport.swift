@@ -4,6 +4,9 @@ import Foundation
 protocol SidecarTransport: AnyObject {
     var onLine: ((String) -> Void)? { get set }
     var onTerminate: (() -> Void)? { get set }
+    /// Whether the underlying process is alive. The client checks this before sending so a
+    /// request never blocks writing into a dead pipe when the sidecar failed to launch.
+    var isRunning: Bool { get }
     func send(_ line: String)
     func start() throws
     func stop()
@@ -17,6 +20,7 @@ final class ProcessSidecarTransport: SidecarTransport {
     private let scriptURL: URL
     /// Mutable so the host can inject a freshly-fetched auth token before `start()`.
     var environment: [String: String]
+    var isRunning: Bool { process.isRunning }
     // Recreated fresh on every `start()`: a terminated `Process` cannot be re-run, so a
     // restart after a crash needs new Process + pipe instances.
     private var process = Process()
