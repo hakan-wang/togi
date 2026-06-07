@@ -1,12 +1,15 @@
 # Togi — "Where is my project, and how do I keep it?" (read me first)
 
 Hi Håkan. Short version: **your project is NOT trapped inside anyone's Claude account.**
-Claude is just the AI helper. Your actual code lives in two real places that are yours:
+Claude is just the AI helper. Your actual code lives in real places that are yours:
 
 1. **On your Mac** — the folder `~/togi` (the web app is in `apps/web`).
-2. **On GitHub** — https://github.com/er-fo/togi , branch **`feat/web-app`**.
-   It's **public**, and every change was pushed using **your own GitHub account (hakan-wang)**.
-   Everything we built is saved there. Nothing is lost.
+2. **Your OWN private GitHub** — https://github.com/hakan-wang/togi 🔒 (PRIVATE, only you).
+   This is your personal copy. Default branch is **`feat/web-app`** = everything you built.
+3. (Also on the shared team repo) https://github.com/er-fo/togi , branch **`feat/web-app`**
+   — public, where we worked during the build. Your private copy above is the one you own outright.
+
+Everything we built is saved. Nothing is lost.
 
 > The Claude Code app being signed into someone else's account only decides *who pays for
 > the AI*. It does not own or hold your code.
@@ -19,8 +22,9 @@ Claude is just the AI helper. Your actual code lives in two real places that are
 3. Done. All the code is right there — keep building.
 
 ## B) Get a fresh copy (new computer, or just to be safe)
+Clone YOUR private repo (it'll ask you to sign into GitHub as hakan-wang):
 ```bash
-git clone https://github.com/er-fo/togi.git
+git clone https://github.com/hakan-wang/togi.git
 cd togi/apps/web
 npm install
 npm run dev      # then open http://localhost:3000
@@ -44,6 +48,12 @@ If you clone to a **new** computer, recreate it: copy `apps/web/.env.local.examp
 ## The one branch with all the web work
 `feat/web-app` — make sure you're on it: `git checkout feat/web-app`.
 
-## (Optional) Make a copy you 100% own on your personal GitHub
-If you want it under your own account instead of the shared `er-fo` org, see the note your
-assistant added below / ask Claude to "push a copy to my personal GitHub".
+## ✅ Done: your personal copy already exists
+A private copy you fully own is at **https://github.com/hakan-wang/togi** (set up for you).
+To make your Mac push there by default instead of the team repo:
+```bash
+cd ~/togi
+git remote set-url origin https://github.com/hakan-wang/togi.git
+```
+(Right now `origin` = the team repo and `personal` = your private repo. The command above
+makes `origin` your private one — optional, only if you want your own copy to be the main one.)
