@@ -9,7 +9,8 @@ final class SchemaMigrationTests: XCTestCase {
         let expected = [
             "planned_blocks", "activity_observations", "activity_segments", "nudges",
             "daily_summaries", "weekly_summaries", "monthly_summaries",
-            "goals", "categories", "calendar_accounts", "settings", "account"
+            "goals", "calendar_accounts", "settings", "account",
+            "category_registry", "user_events"
         ]
 
         try db.dbQueue.read { conn in
@@ -36,6 +37,40 @@ final class SchemaMigrationTests: XCTestCase {
         try db.dbQueue.read { conn in
             let cols = try conn.columns(in: "planned_blocks").map { $0.name }
             XCTAssertTrue(cols.contains("calendar_id"), "planned_blocks needs a calendar_id column for two-way sync")
+        }
+    }
+
+    func testV5CreatesSeededCategoryRegistry() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            XCTAssertTrue(try conn.tableExists("category_registry"))
+            XCTAssertFalse(try conn.tableExists("categories"), "legacy categories table should be gone")
+            let count = try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM category_registry") ?? 0
+            XCTAssertEqual(count, 9, "9 default categories seeded")
+            let deepwork = try String.fetchOne(conn, sql: "SELECT color FROM category_registry WHERE id = 'deepwork'")
+            XCTAssertEqual(deepwork, "#2E5BFF")
+        }
+    }
+
+    func testV5RenamesSegmentAndBlockColumns() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            let seg = try conn.columns(in: "activity_segments").map { $0.name }
+            XCTAssertTrue(["cat", "sub", "title", "desc"].allSatisfy(seg.contains))
+            XCTAssertFalse(seg.contains("category"))
+            XCTAssertFalse(seg.contains("sub_category"))
+            let blk = try conn.columns(in: "planned_blocks").map { $0.name }
+            XCTAssertTrue(["cat", "sub", "desc"].allSatisfy(blk.contains))
+            XCTAssertFalse(blk.contains("category"))
+        }
+    }
+
+    func testV5CreatesUserEvents() throws {
+        let db = try DatabaseService(inMemory: true)
+        try db.dbQueue.read { conn in
+            XCTAssertTrue(try conn.tableExists("user_events"))
+            let cols = try conn.columns(in: "user_events").map { $0.name }
+            XCTAssertTrue(["cat", "sub", "title", "desc", "start_at", "end_at"].allSatisfy(cols.contains))
         }
     }
 }

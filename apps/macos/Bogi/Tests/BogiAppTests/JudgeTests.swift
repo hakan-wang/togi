@@ -11,9 +11,9 @@ final class JudgeTests: XCTestCase {
           "start_at": "2026-06-06T10:00:00Z",
           "end_at": "2026-06-06T10:02:30Z",
           "minutes": 2.5,
-          "category": "Distraction",
-          "sub_category": "Social",
-          "sub_sub": "Scrolling X feed",
+          "cat": "scroll",
+          "sub": "Social",
+          "title": "Scrolling X feed",
           "on_task": false,
           "confidence": 0.9
         },
@@ -21,9 +21,9 @@ final class JudgeTests: XCTestCase {
           "start_at": "2026-06-06T10:02:30Z",
           "end_at": "2026-06-06T10:05:00Z",
           "minutes": 2.5,
-          "category": "Distraction",
-          "sub_category": "Video",
-          "sub_sub": "YouTube",
+          "cat": "leisure",
+          "sub": "Video",
+          "title": "YouTube",
           "on_task": false,
           "confidence": 0.8
         }
@@ -37,7 +37,7 @@ final class JudgeTests: XCTestCase {
     func testParseCleanJSON() throws {
         let output = try JudgeOutput.parse(offTaskJSON)
         XCTAssertEqual(output.segments.count, 2)
-        XCTAssertEqual(output.segments.first?.subSub, "Scrolling X feed")
+        XCTAssertEqual(output.segments.first?.title, "Scrolling X feed")
         XCTAssertEqual(output.segments.first?.onTask, false)
         XCTAssertEqual(output.segments.first?.minutes, 2.5)
         XCTAssertTrue(output.nudge.should)
@@ -88,7 +88,7 @@ final class JudgeTests: XCTestCase {
             return ActivitySegment(
                 id: id, startAt: start, endAt: start.addingTimeInterval(minutes * 60),
                 minutes: minutes, plannedBlockId: nil,
-                category: "Distraction", subCategory: nil, subSub: nil,
+                cat: "scroll", sub: nil, title: nil, desc: nil,
                 onTask: onTask, confidence: 0.9, judgedAt: now)
         }
 

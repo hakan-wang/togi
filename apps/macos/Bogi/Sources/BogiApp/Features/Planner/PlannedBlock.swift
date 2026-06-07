@@ -13,7 +13,9 @@ struct PlannedBlock: Codable, FetchableRecord, PersistableRecord, TableRecord {
     var title: String
     var startAt: Date
     var endAt: Date
-    var category: String?
+    var cat: String?
+    var sub: String?
+    var desc: String?
     var goalId: String?
     var status: String                 // planned | done | cancelled | orphaned | …
     var createdByBogi: Bool
@@ -30,7 +32,9 @@ struct PlannedBlock: Codable, FetchableRecord, PersistableRecord, TableRecord {
         case title
         case startAt = "start_at"
         case endAt = "end_at"
-        case category
+        case cat
+        case sub
+        case desc
         case goalId = "goal_id"
         case status
         case createdByBogi = "created_by_bogi"

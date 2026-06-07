@@ -1,6 +1,7 @@
 import Foundation
 
 /// The judge's structured output. Decoded from the LLM's (possibly fenced) JSON reply.
+/// Expected segment shape: { start_at, end_at, minutes, cat, sub, title, desc, on_task, confidence }
 struct JudgeOutput: Codable {
     var segments: [JudgeSegment]
     var nudge: JudgeNudge
@@ -10,9 +11,10 @@ struct JudgeSegment: Codable {
     var startAt: Date
     var endAt: Date
     var minutes: Double
-    var category: String?
-    var subCategory: String?
-    var subSub: String?
+    var cat: String?
+    var sub: String?
+    var title: String?
+    var desc: String?
     var onTask: Bool?
     var confidence: Double?
 
@@ -20,9 +22,10 @@ struct JudgeSegment: Codable {
         case startAt = "start_at"
         case endAt = "end_at"
         case minutes
-        case category
-        case subCategory = "sub_category"
-        case subSub = "sub_sub"
+        case cat
+        case sub
+        case title
+        case desc
         case onTask = "on_task"
         case confidence
     }

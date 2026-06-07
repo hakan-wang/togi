@@ -3,7 +3,7 @@ import Foundation
 /// Everything the judge needs for one 5-minute tick: the active calendar block (if any),
 /// the recent observations, and how long the user has already drifted off-task.
 struct JudgeInput {
-    var activeBlock: (title: String, category: String?, startAt: Date, endAt: Date)?
+    var activeBlock: (title: String, cat: String?, startAt: Date, endAt: Date)?
     var observations: [(t: Date, app: String?, window: String?, text: String?, focused: Bool)]
     var recentOffTaskMinutes: Int
 }
@@ -16,7 +16,7 @@ enum JudgePrompt {
     // {
     //   "segments": [
     //     { "start_at": ISO8601, "end_at": ISO8601, "minutes": Double,
-    //       "category": String, "sub_category": String, "sub_sub": String,
+    //       "cat": String, "sub": String, "title": String, "desc": String,
     //       "on_task": Bool, "confidence": Double }
     //   ],
     //   "nudge": { "should": Bool, "severity": Int, "message": String? }
@@ -38,7 +38,7 @@ enum JudgePrompt {
                 "start_at": iso.string(from: block.startAt),
                 "end_at": iso.string(from: block.endAt),
             ]
-            if let category = block.category { b["category"] = category }
+            if let cat = block.cat { b["cat"] = cat }
             root["planned_block"] = b
         } else {
             root["planned_block"] = NSNull()

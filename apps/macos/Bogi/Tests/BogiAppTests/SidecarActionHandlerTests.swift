@@ -28,13 +28,13 @@ final class SidecarActionHandlerTests: XCTestCase {
             recordSegments: { segs in inserted = segs; return segs.count })
         let input: [String: Any] = ["segments": [[
             "start_at": "2026-06-06T10:00:00Z", "end_at": "2026-06-06T10:05:00Z",
-            "minutes": 5, "category": "Work", "sub_category": "Coding", "sub_sub": "Editing",
+            "minutes": 5, "cat": "deepwork", "sub": "Litro", "title": "Editing",
             "on_task": true, "confidence": 0.9,
         ]]]
         let result = await handlers.handle("record_segments", input)
         XCTAssertEqual(result["ok"] as? Bool, true)
         XCTAssertEqual(result["count"] as? Int, 1)
-        XCTAssertEqual(inserted.first?.category, "Work")
+        XCTAssertEqual(inserted.first?.cat, "deepwork")
         XCTAssertEqual(inserted.first?.onTask, true)
     }
 }

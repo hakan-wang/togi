@@ -350,7 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await MainActor.run {
                     segs.forEach {
                         segmentStore.insert($0)
-                        let desc = [$0.category, $0.subCategory, $0.subSub].compactMap { $0 }.joined(separator: " — ")
+                        let desc = [$0.cat, $0.sub, $0.title].compactMap { $0 }.joined(separator: " — ")
                         if !desc.isEmpty { search.indexSegment(id: $0.id, description: desc) }
                     }
                     return segs.count

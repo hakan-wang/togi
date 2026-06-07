@@ -52,7 +52,7 @@ final class JudgeCoordinator {
         }
         let active = blocks.activeBlock(at: now)
         let input = JudgeInput(
-            activeBlock: active.map { (title: $0.title, category: $0.category, startAt: $0.startAt, endAt: $0.endAt) },
+            activeBlock: active.map { (title: $0.title, cat: $0.cat, startAt: $0.startAt, endAt: $0.endAt) },
             observations: obs,
             recentOffTaskMinutes: segments.offTaskMinutes(within: offTaskWindow, now: now)
         )

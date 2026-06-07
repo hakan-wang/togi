@@ -61,8 +61,11 @@ final class SidecarActionHandlers {
                 else { return nil }
                 return ActivitySegment(
                     id: UUID().uuidString, startAt: start, endAt: end, minutes: minutes,
-                    plannedBlockId: nil, category: r["category"] as? String,
-                    subCategory: r["sub_category"] as? String, subSub: r["sub_sub"] as? String,
+                    plannedBlockId: nil,
+                    cat: r["cat"] as? String,
+                    sub: r["sub"] as? String,
+                    title: r["title"] as? String,
+                    desc: r["desc"] as? String,
                     onTask: r["on_task"] as? Bool, confidence: r["confidence"] as? Double, judgedAt: now)
             }
             let count = await recordSegments(segs)

@@ -49,7 +49,7 @@ final class InsightsService {
         var minutesByCategory: [String: Double] = [:]
         var onTaskByCategory: [String: Double] = [:]
         for seg in segments {
-            let key = seg.category ?? "uncategorized"
+            let key = seg.cat ?? "uncategorized"
             minutesByCategory[key, default: 0] += seg.minutes
             if seg.onTask == true {
                 onTaskByCategory[key, default: 0] += seg.minutes
