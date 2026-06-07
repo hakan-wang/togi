@@ -94,6 +94,10 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
           `SELECT title, start_at, end_at FROM planned_blocks
             WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?) ORDER BY start_at`
         ).all(lo, hi);
+        const events = db.prepare(
+          `SELECT title, cat, start_at, end_at FROM user_events
+            WHERE datetime(start_at) >= datetime(?) AND datetime(start_at) <= datetime(?) ORDER BY start_at`
+        ).all(lo, hi);
 
         if (segs.length === 0) {
           // Fallback: no judged segments yet — estimate from raw observations grouped by app.
@@ -116,6 +120,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
             totalMinutes: minutesFromObservations(observationCount),
             topCategories,
             plannedBlocks: blocks,
+            events,
           });
         }
 
@@ -126,7 +131,7 @@ export function makeReadTools(open: OpenDB): StructuredToolInterface[] {
         const topCategories = [...byCat.entries()]
           .map(([category, minutes]) => ({ category, minutes }))
           .sort((a, b) => b.minutes - a.minutes).slice(0, 8);
-        return JSON.stringify({ source: "segments", totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks });
+        return JSON.stringify({ source: "segments", totalMinutes, onTaskMinutes, offTaskMinutes: totalMinutes - onTaskMinutes, topCategories, plannedBlocks: blocks, events });
       } finally { db.close(); }
     },
     {

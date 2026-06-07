@@ -135,6 +135,14 @@ test("search_activity falls back to raw observations when no segments match", as
   expect(out.results[0].description).toContain("fallback query");
 });
 
+// --- Task 8: events in summarize_range ---
+
+test("summarize_range includes user events in range", async () => {
+  const tools = makeReadTools(() => openReadOnly(path));
+  const out = JSON.parse(await tools.find((t) => t.name === "summarize_range")!.invoke({ start: "2026-06-06", end: "2026-06-06" }));
+  expect(out.events.map((e: any) => e.title)).toContain("Gym");
+});
+
 // --- Task 7: list_categories, read_behaviour, list_events ---
 
 test("list_categories returns the registry ordered", async () => {
