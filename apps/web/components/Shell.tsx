@@ -77,7 +77,7 @@ function selfCtx(label: string): CapContext {
 // Plan vs check-in for a tapped block/gap depends on the toggle + whether it's in the past.
 function planAtCtx(b?: any): CapContext {
   const win = b && b.start != null && b.end != null ? `${fmt(b.start)}–${fmt(b.end)}` : undefined;
-  return { title: "Plan", domain: "Work", window: win, kind: "plan", prompt: "Plan smarter with Togi — what do you want to get done?" };
+  return { title: "Plan", domain: "Work", window: win, kind: "plan", start: b?.start, end: b?.end, prompt: "Plan smarter with Togi — what do you want to get done?" };
 }
 function planCtx(): CapContext { return planAtCtx(); }
 
@@ -111,7 +111,7 @@ export function TogiAppB() {
   const [collapsed, setCollapsed] = useState(false);
   const [coach, setCoach] = useState<any>({ state: "pending", msg: null });
   const [banner, setBanner] = useState(true);
-  const [real, setReal] = useState<RealEntry[]>(REAL_SEED);
+  const [real, setReal] = useState<RealEntry[]>([]); // today starts empty — manual check-ins only
   const [plan, setPlan] = useState<PlanBlock[]>(PLAN);
   const [selectedDate, setSelectedDate] = useState<string>(() => dayKey());
   const [nowMin, setNowMin] = useState<number>(() => nowMinutes());
@@ -121,7 +121,7 @@ export function TogiAppB() {
   const [calEmail, setCalEmail] = useState<string | null>(null);
   const [calStatus, setCalStatus] = useState<string | null>(null);
   const [gcalEditor, setGcalEditor] = useState<{ block: PlanBlock | null } | null>(null);
-  const [insight, setInsight] = useState<BannerInsight>(() => computeInsight(REAL_SEED));
+  const [insight, setInsight] = useState<BannerInsight>(() => computeInsight([]));
   const [vocab, setVocab] = useState<Vocabulary>({ projects: [], activities: STARTER_ACTIVITIES });
   const ackTimer = useRef<any>(null);
 
@@ -203,12 +203,34 @@ export function TogiAppB() {
     else openSession(mode, arg);
   };
 
+  // Tap on the calendar grid → decide plan vs check-in and build the context for the
+  // inline "Togi listening" popover. (The big card is only for the + button / Plan.)
+  const buildCtx = (target: any): CapContext => {
+    const todayK = dayKey();
+    const futureSel = selectedDate > todayK;
+    if (target.block) {
+      const b = target.block;
+      const future = futureSel || (selectedDate === todayK && (b.start ?? 0) > nowMin);
+      return view === "plan" || future ? planAtCtx(b) : blockCtx(b);
+    }
+    const start = target.range ? target.range[0] : target.point;
+    const end = target.range ? target.range[1] : undefined;
+    const label = target.range ? `${fmt(target.range[0])}–${fmt(target.range[1])}` : `around ${fmt(target.point)}`;
+    if (view === "plan" || futureSel) return { ...planCtx(), start, end };
+    return { ...selfCtx(label), start, end };
+  };
+  const onVoice = (ctx: CapContext, input: CheckinInput) => (ctx.kind === "plan" ? handlePlan(ctx, input) : handleCapture(ctx, input));
+  const onTypeFallback = (ctx: CapContext) => setCapture({ context: ctx, plan: ctx.kind === "plan" });
+
   const logged = (msg?: string) => { clearTimeout(ackTimer.current); setCoach({ state: "ack", msg }); ackTimer.current = setTimeout(() => setCoach({ state: "idle" }), 4800); };
 
   function placeLive(entry: RealEntry, durationMin?: number): RealEntry {
-    if (entry.slot) return entry;
-    const dur = durationMin || 45;
-    const n = nowMinutes();
+    if (entry.slot) return entry;                       // aligns to its plan block's time
+    if (entry.start != null) {                          // explicit time (a tapped gap / selected range)
+      const end = entry.end ?? Math.min(DAY_END, entry.start + (durationMin || 45));
+      return { ...entry, off: true, start: entry.start, end };
+    }
+    const dur = durationMin || 45; const n = nowMinutes();
     return { ...entry, off: true, end: n, start: Math.max(DAY_START, n - dur) };
   }
 
@@ -223,11 +245,13 @@ export function TogiAppB() {
     const r = await categorizeText(utterance, { block: ctx.title, planId: ctx.planId, window: ctx.window, kind: ctx.kind }, vocab);
     if (!isAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
 
-    const matchedPlanId = r.matched && ctx.planId ? ctx.planId : null;
+    // A block check-in ALWAYS fills that block's slot (so reality sits over the plan,
+    // showing the gap) — even if you did something else. match = did it match the plan.
+    const slot = ctx.planId || null;
     const entry = placeLive({
-      id: `live-${Date.now()}`, slot: matchedPlanId || undefined, off: !matchedPlanId, match: r.matched,
+      id: `live-${Date.now()}`, slot: slot || undefined, off: !slot, match: r.matched,
       domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note, confidence: r.confidence, live: true,
-      date: selectedDate,
+      date: selectedDate, start: ctx.start, end: ctx.end,
     }, r.durationMin ?? undefined);
 
     const next = [...real, entry];
@@ -236,7 +260,7 @@ export function TogiAppB() {
     if (r.activity && !vocab.activities.some((a) => a.toLowerCase() === r.activity.toLowerCase())) { addActivity(r.activity); setVocab((v) => ({ ...v, activities: [...v.activities, r.activity] })); }
     if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
 
-    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: r.durationMin, matched_plan_id: matchedPlanId, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: null });
+    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: r.durationMin, matched_plan_id: slot, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: null });
     logged(`Logged: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity}`);
     return { status: "done" };
   }
@@ -250,10 +274,10 @@ export function TogiAppB() {
     const utterance = isAnswer ? `${input.draftText}. ${base}`.trim() : base;
 
     // Plans are NOT force-categorized (only real check-ins are): just need a title + time.
-    const tr = parseTimeRange(utterance, parseDuration(utterance));
-    if (!isAnswer && !tr) return { status: "clarify", question: "When, and for how long?", draftText: utterance };
-
+    // If the tap already carried a time (a selected slot), use it — no need to ask.
     const facts = loadFacts();
+    const tr = ctx.start != null ? { start: ctx.start, end: ctx.end ?? ctx.start + (parseDuration(utterance) || 60) } : parseTimeRange(utterance, parseDuration(utterance));
+    if (!isAnswer && !tr) return { status: "clarify", question: "When, and for how long?", draftText: utterance };
     const range = tr || { start: facts.wakeMin + 120, end: facts.wakeMin + 120 + (parseDuration(utterance) || 60) };
     const g = guessPlanMeta(utterance);
     let block: PlanBlock = { id: `plan-${Date.now()}`, date: selectedDate, domain: g.domain, project: null, activity: g.activity, title: cleanTitle(isAnswer ? input.draftText! : base), start: range.start, end: range.end };
@@ -366,8 +390,7 @@ export function TogiAppB() {
               <DayCalendar view={view} setView={setView} real={realForDay} plan={planForDay} now={nowMin} selectedDate={selectedDate} density="regular"
                 onSelectDay={(key: string) => setSelectedDate(key)}
                 onPlanDay={(key: string) => { setSelectedDate(key); setCapture({ context: planCtx(), plan: true }); }}
-                onSelfCheckin={(label: string) => { const wantPlan = view === "plan" || selectedDate > today; setCapture(wantPlan ? { context: planCtx(), plan: true } : { context: selfCtx(label) }); }}
-                onTalkBlock={(b: any) => { const future = selectedDate > today || (selectedDate === today && (b.start ?? 0) > nowMin); const wantPlan = view === "plan" || future; setCapture(wantPlan ? { context: planAtCtx(b), plan: true } : { context: blockCtx(b) }); }}
+                buildCtx={buildCtx} onVoice={onVoice} onType={onTypeFallback}
                 onEditBlock={calConnected ? (b: PlanBlock) => setGcalEditor({ block: b }) : undefined} />
             </div>
           </div>

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { DOMAINS, DAY_START, DAY_END, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
 import { dayKey, dayLabel, weekDays, WeekDay } from "../lib/dates";
 import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus, IcEdit } from "./icons";
+import { useRecorder } from "../lib/useRecorder";
 
 function DaySelector({ selectedDate, onSelectDay, onPlanDay }: any) {
   const week = weekDays();
@@ -128,12 +129,13 @@ function MultiDay({ span, plan }: { span: string; plan: any[] }) {
   );
 }
 
-export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now = 0, selectedDate, onSelectDay, onPlanDay, onSelfCheckin, onTalkBlock, onEditBlock, density }: any) {
+export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now = 0, selectedDate, onSelectDay, onPlanDay, buildCtx, onVoice, onType, onEditBlock, density }: any) {
   const [expanded, setExpanded] = useState(true);
   const [span, setSpan] = useState("1d");
-  const [listen, setListen] = useState<any>(null);
+  const [listen, setListen] = useState<any>(null);  // { x, y, ctx, label, busy }
   const [drag, setDrag] = useState<any>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const rec = useRecorder();
 
   const isToday = selectedDate === dayKey();
   const ppm = density === "compact" ? 0.62 : density === "comfy" ? 0.82 : 0.72;
@@ -157,15 +159,33 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
     if (el) setThumb({ left: el.offsetLeft, width: el.offsetWidth });
   }, [view, expanded, span]);
 
-  const talkAt = (clientX: number, clientY: number, label: string, fn: () => void) => {
+  // Inline "Togi listening" popover — records real audio right at the tapped spot.
+  const startListen = async (clientX: number, clientY: number, target: any, label: string) => {
+    const ctx = buildCtx(target);
     const r = trackRef.current!.getBoundingClientRect();
-    setListen({ x: clientX - r.left, y: clientY - r.top, label, fn });
+    setListen({ x: clientX - r.left, y: clientY - r.top, ctx, label, busy: false });
+    try { await rec.start(); } catch { setListen(null); onType(ctx); } // mic blocked → type fallback
   };
-  const onBlock = (e: React.MouseEvent, b: any) => { e.stopPropagation(); onTalkBlock(b); };
+  const submitListen = async () => {
+    if (!listen) return;
+    const ctx = listen.ctx;
+    setListen((l: any) => (l ? { ...l, busy: true } : l));
+    const blob = await rec.stop();
+    setListen(null);
+    try { const res = await onVoice(ctx, { blob }); if (res && res.status === "clarify") onType(ctx); }
+    catch { onType(ctx); }
+  };
+  const cancelListen = () => { rec.cancel(); setListen(null); };
+  const typeListen = () => { const ctx = listen?.ctx; rec.cancel(); setListen(null); if (ctx) onType(ctx); };
+
+  const onBlock = (e: React.MouseEvent, b: any) => { e.stopPropagation(); startListen(e.clientX, e.clientY, { block: b }, b.title); };
 
   useEffect(() => {
     if (!listen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); setListen(null); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); cancelListen(); }
+      else if (e.key === "Enter" && !e.shiftKey && !listen.busy) { e.preventDefault(); submitListen(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [listen]);
@@ -179,8 +199,8 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       const y1 = ev.clientY - r.top; setDrag(null);
-      if (moved && Math.abs(y1 - y0) > 10) { const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1)); onSelfCheckin(`${fmt(a)}–${fmt(b)}`); }
-      else { const t = mOf(y0); onSelfCheckin(`around ${fmt(t)}`); }
+      if (moved && Math.abs(y1 - y0) > 10) { const a = mOf(Math.min(y0, y1)), b = mOf(Math.max(y0, y1)); startListen(ev.clientX, ev.clientY, { range: [a, b] }, `${fmt(a)}–${fmt(b)}`); }
+      else { const t = mOf(y0); startListen(ev.clientX, ev.clientY, { point: t }, `around ${fmt(t)}`); }
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   };
@@ -206,7 +226,7 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
       </div>
 
       {!expanded ? (
-        <MinimizedDay view={view} real={real} plan={plan} onExpand={() => setExpanded(true)} onTalkBlock={onTalkBlock} />
+        <MinimizedDay view={view} real={real} plan={plan} onExpand={() => setExpanded(true)} onTalkBlock={(b: any) => onType(buildCtx({ block: b }))} />
       ) : span !== "1d" ? (
         <div className="cal-track-wrap"><MultiDay span={span} plan={plan} /></div>
       ) : (
@@ -258,10 +278,13 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
               <div className="listen" style={{ left: Math.min(listen.x, (trackRef.current?.offsetWidth || 400) - 168), top: Math.max(listen.y - 58, 0) }}>
                 <img className="listen-mascot bg-bob" src="/togi-mascot.png" alt="" />
                 <div className="listen-card">
-                  <div className="listen-bubble"><span className="listen-wave"><i /><i /><i /><i /></span> Listening… <span className="dim">{listen.label}</span></div>
-                  <button className="listen-type" onClick={(e) => { e.stopPropagation(); const f = listen.fn; setListen(null); f(); }}><IcChat size={12} /> type instead</button>
+                  <div className="listen-bubble"><span className="listen-wave"><i /><i /><i /><i /></span> {listen.busy ? "Saving…" : "Listening…"} <span className="dim">{listen.label}</span></div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button className="listen-type" onClick={(e) => { e.stopPropagation(); typeListen(); }}><IcChat size={12} /> type instead</button>
+                    {!listen.busy && <button className="listen-type" onClick={(e) => { e.stopPropagation(); submitListen(); }} style={{ background: "var(--togi-live)", color: "#fff", borderColor: "transparent" }}>done · enter</button>}
+                  </div>
                 </div>
-                <button className="listen-x" title="stop" onClick={(e) => { e.stopPropagation(); setListen(null); }}><IcClose size={12} /></button>
+                <button className="listen-x" title="cancel" onClick={(e) => { e.stopPropagation(); cancelListen(); }}><IcClose size={12} /></button>
               </div>
             )}
           </div>

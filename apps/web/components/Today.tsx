@@ -16,7 +16,7 @@ import { Composer } from "./ds";
 
 export type CheckinResult = { status: "done" } | { status: "clarify"; question: string; draftText: string };
 export type CheckinInput = { blob?: Blob | null; text?: string; clarifyAnswer?: string; draftText?: string };
-export interface CapContext { title: string; domain: Domain; prompt: string; window?: string; planId?: string; mins?: number; kind: string; }
+export interface CapContext { title: string; domain: Domain; prompt: string; window?: string; planId?: string; mins?: number; kind: string; start?: number; end?: number; }
 
 const DEFAULT_CTX: CapContext = {
   title: JUST_ENDED.block, domain: JUST_ENDED.domain, window: JUST_ENDED.window, planId: JUST_ENDED.planId,
