@@ -50,6 +50,10 @@ final class MascotViewModel: ObservableObject {
     /// recording. Drives the reactive glow behind the axolotl; pushed by the owner.
     @Published var voiceLevel: Float = 0
     @Published var voiceActive: Bool = false
+    /// True only while the one-time post-onboarding intro bubble is showing. Drives the dismiss
+    /// `×` in `SpeechBubble` and guards the auto-dismiss timer in `MascotPanel`. Nudges never set
+    /// this, so ordinary nudge bubbles stay button-less.
+    @Published var introActive: Bool = false
 
     init(mood: MascotMood = .idle,
          bubbleText: String? = nil,
@@ -77,6 +81,12 @@ final class MascotViewModel: ObservableObject {
         bubbleText = nil
         escalationLevel = 0
         mood = fallback
+    }
+
+    /// End the one-time intro: clear the flag and drop the bubble back to a resting state.
+    func dismissIntro() {
+        introActive = false
+        clearBubble()
     }
 
     /// Nudge wellbeing from a single on-task/off-task read. Gentle on purpose: it takes
