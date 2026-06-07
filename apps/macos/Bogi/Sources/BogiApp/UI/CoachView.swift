@@ -31,6 +31,11 @@ struct CoachView: View {
     @State private var sending: Bool = false
     @State private var errorText: String?
     @State private var suggestions: [String] = []
+    /// Plain dictation for the chat mic: speech streams into the `input` field and, when the turn
+    /// ends, is sent straight to the normal coach agent — same path as typing. This deliberately
+    /// does NOT route through VoiceSession/VoiceCommandAgent (the calendar-only voice agent); the
+    /// mic is just a hands-free way to fill the chat box.
+    @StateObject private var dictation = SpeechRecognizer()
     /// Natural (unclipped) height of the transcript content, measured off-screen so the
     /// scroll view can be capped reliably even with markdown tables/lists in the bubbles.
     @State private var contentHeight: CGFloat = 0
@@ -57,6 +62,11 @@ struct CoachView: View {
             DispatchQueue.main.async { inputFocused = true }
         }
         .onChange(of: messages.isEmpty) { _, isEmpty in onHasMessagesChange(!isEmpty) }
+        // While the mic is open, stream the live (partial) transcript straight into the field so
+        // you watch your words land in the chat box. The final transcript is auto-sent in `onFinal`.
+        .onReceive(dictation.$transcript) { text in
+            if dictation.isListening { input = text }
+        }
         // The conversation now persists across opens (the panel is reused), so reopening keeps
         // the transcript and the agent's thread. On each open just refresh the empty-state
         // openers (the underlying numbers may have changed) and land the cursor in the field.
@@ -96,7 +106,11 @@ struct CoachView: View {
                     .onSubmit(submit)
                     .disabled(sending)
 
-                if let voice { VoiceMicButton(voice: voice, disabled: sending) }
+                // The mic is shown whenever the host wires voice support (nil in previews/demo).
+                // It drives plain dictation into this field — not the voice command agent.
+                if voice != nil {
+                    VoiceMicButton(recording: dictation.isListening, disabled: sending, action: toggleDictation)
+                }
                 sendButton
             }
             .padding(.leading, 14)
@@ -232,6 +246,39 @@ struct CoachView: View {
     }
 
     private func submit() { send(input) }
+
+    // MARK: - Dictation (chat mic)
+
+    /// Tap the mic: start dictating, or stop an in-progress turn early. Stopping delivers whatever
+    /// has been transcribed so far via `onFinal`, which auto-sends it.
+    private func toggleDictation() {
+        if dictation.isListening {
+            dictation.stop()
+        } else {
+            startDictation()
+        }
+    }
+
+    private func startDictation() {
+        guard !sending else { return }
+        Task {
+            let granted = await dictation.requestAuthorization()
+            guard granted else {
+                errorText = "togi needs microphone and speech access. turn them on in System Settings, then tap the mic again."
+                return
+            }
+            errorText = nil
+            input = ""
+            dictation.start { final in
+                // Turn ended (silence, hard cap, or tap-to-stop). Drop it into the field and send
+                // it to the normal coach agent — exactly as if it had been typed.
+                input = final
+                if !final.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    send(final)
+                }
+            }
+        }
+    }
 
     private func send(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)

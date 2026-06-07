@@ -1,16 +1,17 @@
 import SwiftUI
 import AppKit
 
-/// The composer mic control. A tap starts or stops a voice turn. While recording it becomes a
+/// The composer mic control. A tap starts or stops a dictation turn. While recording it becomes a
 /// filled stop button wrapped in a soft pulsing ring, so it's unmistakable that Togi is listening.
+/// Pure rendering: the host owns the recorder and tells us whether we're `recording` and what to
+/// do on tap, so this button stays agnostic about where the transcript goes.
 struct VoiceMicButton: View {
-    @ObservedObject var voice: VoiceSession
+    var recording: Bool
     var disabled: Bool = false
-
-    private var recording: Bool { voice.isMicActive }
+    var action: () -> Void
 
     var body: some View {
-        Button(action: voice.toggle) {
+        Button(action: action) {
             ZStack {
                 if recording { PulseRing() }
                 Image(systemName: recording ? "stop.fill" : "mic.fill")

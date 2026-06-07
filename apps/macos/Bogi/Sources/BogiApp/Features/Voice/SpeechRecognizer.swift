@@ -31,7 +31,7 @@ final class SpeechRecognizer: ObservableObject {
     private var onFinal: ((String) -> Void)?
 
     /// How long a pause ends the turn, and the longest a single turn may run.
-    private let silenceSeconds: TimeInterval = 1.1
+    private let silenceSeconds: TimeInterval = 1.7
     private let maxSeconds: TimeInterval = 20
 
     // MARK: - Authorization
