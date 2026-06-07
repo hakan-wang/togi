@@ -80,9 +80,57 @@ export function makeActionTools(callAction: CallAction): StructuredToolInterface
         cat: z.string().nullish(),
         sub: z.string().nullish(),
         desc: z.string().nullish(),
+        goal_id: z.string().nullish(),
       }),
     }
   );
 
-  return [create_block, move_block, post_nudge, manage_categories, write_behaviour, add_event];
+  const manage_goal = tool(
+    async (input) => JSON.stringify(await callAction("manage_goal", input)),
+    {
+      name: "manage_goal",
+      description: "Curate the user's goals. op 'add' (title, why?, period?, target?, cat?) creates a goal; op 'update' (id, status?, why?, target?, cat?) changes one. status is active, done, or abandoned. cat, if given, must be an existing category.",
+      schema: z.object({
+        op: z.enum(["add", "update"]),
+        id: z.string().nullish(),
+        title: z.string().nullish(),
+        why: z.string().nullish(),
+        period: z.string().nullish(),
+        target: z.string().nullish(),
+        status: z.string().nullish(),
+        cat: z.string().nullish(),
+      }),
+    }
+  );
+
+  const log_journal = tool(
+    async (input) => JSON.stringify(await callAction("log_journal", input)),
+    {
+      name: "log_journal",
+      description: "Record a dated note. kind 'insight' = a behavioural pattern you noticed (give a short title, a one-line desc, a confidence 0..1, and evidence time-ranges). kind 'progress'/'checkin'/'milestone' = a note about a goal (pass goal_id). cat, if given, must be an existing category. This is your episodic memory; periodically fold durable insights into write_behaviour.",
+      schema: z.object({
+        kind: z.enum(["insight", "progress", "checkin", "milestone"]),
+        title: z.string(),
+        desc: z.string().nullish(),
+        goal_id: z.string().nullish(),
+        cat: z.string().nullish(),
+        confidence: z.number().nullish(),
+        evidence: z.array(z.object({ start_at: z.string(), end_at: z.string() })).nullish(),
+      }),
+    }
+  );
+
+  const set_journal_status = tool(
+    async (input) => JSON.stringify(await callAction("set_journal_status", input)),
+    {
+      name: "set_journal_status",
+      description: "Update a journal entry's status: 'dismissed' to hide it, 'superseded' when a newer insight replaces it, or 'active'.",
+      schema: z.object({
+        id: z.string(),
+        status: z.enum(["active", "dismissed", "superseded"]),
+      }),
+    }
+  );
+
+  return [create_block, move_block, post_nudge, manage_categories, write_behaviour, add_event, manage_goal, log_journal, set_journal_status];
 }
