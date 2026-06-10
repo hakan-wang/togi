@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Togi — to sharpen</title>
+  <meta name="description" content="Togi is a voice-first companion that helps you plan your day, then record what you actually did — turning the gap into clarity about how you really spend your time." />
+
+  <meta property="og:title" content="Togi — to sharpen" />
+  <meta property="og:description" content="Know where your time actually goes. Join the waitlist." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://heytogi.com" />
+  <meta property="og:image" content="https://heytogi.com/togi-mascot.png" />
+  <meta name="theme-color" content="#ffffff" />
+
+  <link rel="icon" type="image/png" href="togi-mascot.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="brand">
+      <img class="mark" src="togi-mascot.png" alt="" width="40" height="40" />
+      <span class="word">togi</span>
+      <span class="tag">to&nbsp;sharpen</span>
+    </header>
+
+    <section class="hero">
+      <h1 class="headline">Know where your time<br /> actually goes.</h1>
+      <p class="sub">
+        A voice-first companion that helps you plan your day — then record what you
+        really did. The gap between the two becomes clarity you can finally act on.
+      </p>
+
+      <form id="waitlist-form" class="form" novalidate>
+        <div class="row">
+          <input id="first" class="input" type="text" name="first_name" autocomplete="given-name" placeholder="First name" aria-label="First name" required />
+          <input id="last" class="input" type="text" name="last_name" autocomplete="family-name" placeholder="Last name" aria-label="Last name" required />
+        </div>
+        <input id="email" class="input" type="email" name="email" inputmode="email" autocomplete="email" placeholder="Email" aria-label="Email" required />
+        <button id="submit" class="btn" type="submit">
+          <span class="btn-label">Join the waitlist</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <p class="reassure">Private by design. One email, only when Togi opens.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>heytogi.com</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

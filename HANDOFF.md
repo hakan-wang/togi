@@ -47,11 +47,13 @@ If you clone to a **new** computer, recreate it: copy `apps/web/.env.local.examp
 ---
 
 ## What's in the repo
-- `apps/web` — the **Next.js web app** (everything we built: calendar, voice check-ins,
-  categorization, insights/memory, sessions, auto check-in).
-- `apps/macos` — the older macOS app.
+- `apps/web` — the **Next.js web app** (calendar, voice check-ins, categorization,
+  insights/memory, sessions, auto check-in). The real product.
+- `landing/` — the **heytogi.com** landing page + waitlist (clean/Apple style, deploys via Cloudflare Pages).
 - `backend` — cloud functions (Claude proxy, Google Calendar, Stripe).
-- `docs` — the specs (`togi_categorization_spec.md`, `togi_insights_spec.md`).
+- `docs` — the **product brief** (`togi_product_and_ui_brief.md`, the source of truth) + specs.
+- `archive/macos-screen-tracking` — old hackathon macOS screen-tracking app — **don't build on it**
+  (see `archive/README.md`). Read the root `CLAUDE.md` for what's real vs archive.
 
 ## The one branch with all the web work
 `feat/web-app` — make sure you're on it: `git checkout feat/web-app`.

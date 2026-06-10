@@ -1,0 +1,192 @@
+/* ============================================================
+   Togi — heytogi.com landing / waitlist
+   Clean, neutral, Apple-calm. No gradients, no gimmicks.
+   "togi — to sharpen": sharp, quiet, confident.
+   ============================================================ */
+:root {
+  --bg: #ffffff;
+  --bg-soft: #fbfbfd;
+  --ink: #1d1d1f;       /* near-black, primary text */
+  --muted: #6e6e73;     /* secondary text */
+  --line: #d2d2d7;      /* hairline borders */
+  --line-soft: #e8e8ed;
+  --accent: #0a84ff;    /* a single restrained blue, used sparingly */
+  --accent-ink: #0060df;
+
+  --font: -apple-system, BlinkMacSystemFont, "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrap {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 64px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+}
+
+/* ---- brand lockup ---- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 56px;
+}
+.mark {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  opacity: 0.95;
+}
+.word {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 9px;
+  margin-left: 3px;
+  border-left: 1px solid var(--line);
+}
+
+/* ---- hero ---- */
+.hero { width: 100%; animation: fade 0.6s ease both; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.headline {
+  font-size: 42px;
+  line-height: 1.07;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  color: var(--ink);
+}
+.sub {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 20px auto 0;
+  max-width: 46ch;
+}
+
+/* ---- form ---- */
+.form {
+  margin-top: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.row { display: flex; gap: 10px; }
+.row .input { flex: 1 1 0; min-width: 0; }
+
+.input {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input::placeholder { color: #86868b; }
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12);
+}
+
+.btn {
+  margin-top: 2px;
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink);
+  border: none;
+  border-radius: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+}
+.btn:hover { background: #000; }
+.btn:active { transform: scale(0.99); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+
+.btn-spinner {
+  display: none;
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn.loading .btn-label { display: none; }
+.btn.loading .btn-spinner { display: inline-block; }
+
+.message {
+  font-size: 14.5px;
+  line-height: 1.45;
+  margin-top: 16px;
+  min-height: 19px;
+  font-weight: 500;
+}
+.message.ok { color: #1a7f37; }
+.message.err { color: #c0392b; }
+
+.reassure {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 16px;
+}
+
+/* ---- footer ---- */
+.foot {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 24px;
+  font-size: 12.5px;
+  color: #86868b;
+  border-top: 1px solid var(--line-soft);
+}
+
+@media (max-width: 520px) {
+  .wrap { padding: 44px 20px 32px; }
+  .brand { margin-bottom: 40px; }
+  .headline { font-size: 33px; }
+  .sub { font-size: 16px; }
+  .row { flex-direction: column; }
+}

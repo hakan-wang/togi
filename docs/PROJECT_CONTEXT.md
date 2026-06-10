@@ -1,9 +1,22 @@
 # Togi — Project Context & Continuation Plan
 
-> **Purpose of this file.** This is the single source of truth for picking up Togi where we left
-> off. It is written to be factual (verified against the actual code on 2026-06-07), not
-> aspirational. If you are a fresh Claude session: read this end to end before changing anything.
-> If something here disagrees with the code, the code wins — update this file.
+> ⚠️ **DIRECTION UPDATE (2026-06-10).** The product/UI source of truth is now
+> **`docs/togi_product_and_ui_brief.md`** — read it first; if anything below contradicts it, the
+> **brief wins**. Key shifts since this file was written:
+> - **Brand is clean / neutral / Apple-calm — NOT blue-sky/pastel/playful.** The dreamy sky look
+>   and "Bogi" tokens are Michelle's old aesthetic and are being replaced. The axolotl is a
+>   temporary placeholder only.
+> - **Positioning:** clarity + a private behavioral data bank about your time (accountability is
+>   just the input mechanism), not "accountability" as the headline.
+> - The macOS **screen-tracking** app moved to **`archive/macos-screen-tracking/`** (hackathon,
+>   do-not-build-on). A new **`landing/`** folder holds the heytogi.com waitlist site.
+> - The web app's *styling* still uses the old blue-sky tokens — restyling it is a planned task.
+> - **Categorization model is unresolved:** code uses 4 fields, the brief describes 3 levels — ask
+>   Håkan before changing it. See root `CLAUDE.md` §4.
+
+> **Purpose of this file.** Factual state of the *code* for picking up where we left off (verified
+> 2026-06-07). For the **product vision**, defer to the brief. If something here disagrees with the
+> code, the code wins — update this file.
 
 ---
 
