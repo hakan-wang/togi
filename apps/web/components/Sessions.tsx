@@ -70,11 +70,11 @@ function PlannedNotDone() {
   );
 }
 
-export function SessionsView({ onSession, onTalk, onGapCheckin, plan = [], real = [], today, nowMin = 0, planningMin = 1260, autoCheckin = false, minGapMin = 30 }: any) {
+export function SessionsView({ onSession, onTalk, onGapCheckin, plan = [], real = [], today, nowMin = 0, planningMin = 1260, autoCheckin = false, minGapMin = 30, autoEveryMin = 60 }: any) {
   const todays: PlanBlock[] = plan.filter((b: PlanBlock) => (b.date || today) === today).sort((a: PlanBlock, b: PlanBlock) => a.start - b.start);
-  // blank-time check-ins: hourly windows inside gaps ≥ minGapMin (when enabled)
+  // blank-time check-ins: split each gap ≥ minGapMin into windows of autoEveryMin (when enabled)
   const gapCheckins: Array<{ start: number; end: number }> = [];
-  if (autoCheckin) for (let i = 0; i < todays.length - 1; i++) { const g0 = todays[i].end, g1 = todays[i + 1].start; if (g1 - g0 >= minGapMin) gapCheckins.push(...gapWindows(g0, g1, minGapMin)); }
+  if (autoCheckin) for (let i = 0; i < todays.length - 1; i++) { const g0 = todays[i].end, g1 = todays[i + 1].start; if (g1 - g0 >= minGapMin) gapCheckins.push(...gapWindows(g0, g1, minGapMin, autoEveryMin)); }
   const liveSlots = new Set(real.filter((r: RealEntry) => r.live && r.slot).map((r: RealEntry) => r.slot));
   const ended = todays.filter((b) => b.end <= nowMin);
   const due = ended.filter((b) => !liveSlots.has(b.id));

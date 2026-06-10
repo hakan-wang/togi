@@ -5,7 +5,7 @@
    Supabase schema lives in CONNECTING.md (real_entries + projects + activities).
    ============================================================ */
 import { Domain, PlanBlock, RealEntry, STARTER_ACTIVITIES } from "./data";
-import { dayKey } from "./dates";
+import { dayKey, isoFromDayMin } from "./dates";
 import { ensureSession } from "./supabase";
 
 const LS_ENTRIES = "togi.real_entries.v3";
@@ -39,8 +39,16 @@ function lsSet(k: string, v: any) {
 }
 
 /* ---------- Real entries ---------- */
-export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; via: "supabase" | "local" }> {
-  lsSet(LS_ENTRIES, [...lsGet<StoredEntry[]>(LS_ENTRIES, []), row]); // mirror locally first
+const isUuid = (s?: string | null) => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s);
+/** A stored row matches a UI entry by id, else by title + start time (good enough to edit/delete). */
+function sameRow(r: StoredEntry, t: { id?: string; title?: string; started_at?: string | null }): boolean {
+  if (t.id && r.id && r.id === t.id) return true;
+  return r.title === t.title && (r.started_at ?? null) === (t.started_at ?? null);
+}
+
+export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; via: "supabase" | "local"; id: string }> {
+  const clientId = row.id || `loc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  lsSet(LS_ENTRIES, [...lsGet<StoredEntry[]>(LS_ENTRIES, []), { ...row, id: clientId }]); // offline-first mirror
 
   const sb = await ensureSession();
   if (sb) {
@@ -48,13 +56,79 @@ export async function saveRealEntry(row: StoredEntry): Promise<{ ok: boolean; vi
       const { data: { user } } = await sb.auth.getUser();
       if (user) {
         const { id, ...insertable } = row; // let Postgres generate the uuid
-        const { error } = await sb.from("real_entries").insert({ ...insertable, user_id: user.id });
-        if (!error) return { ok: true, via: "supabase" };
-        console.warn("supabase insert failed, kept local:", error.message);
+        const { data, error } = await sb.from("real_entries").insert({ ...insertable, user_id: user.id }).select("id").single();
+        if (!error && data) {
+          const dbId = (data as any).id as string;
+          // upgrade the local mirror's id to the real DB id so later edits/deletes match cleanly
+          lsSet(LS_ENTRIES, lsGet<StoredEntry[]>(LS_ENTRIES, []).map((r) => (r.id === clientId ? { ...r, id: dbId } : r)));
+          return { ok: true, via: "supabase", id: dbId };
+        }
+        if (error) console.warn("supabase insert failed, kept local:", error.message);
       }
     } catch (e) { console.warn("supabase unavailable, kept local:", e); }
   }
-  return { ok: true, via: "local" };
+  return { ok: true, via: "local", id: clientId };
+}
+
+/** Remove one Real entry (local mirror + cloud, best-effort). */
+export async function deleteRealEntry(target: { id?: string; title?: string; started_at?: string | null }): Promise<void> {
+  lsSet(LS_ENTRIES, lsGet<StoredEntry[]>(LS_ENTRIES, []).filter((r) => !sameRow(r, target)));
+  const sb = await ensureSession();
+  if (sb) {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        let q = sb.from("real_entries").delete().eq("user_id", user.id);
+        if (isUuid(target.id)) q = q.eq("id", target.id!);
+        else if (target.title != null) { q = q.eq("title", target.title); q = target.started_at ? q.eq("started_at", target.started_at) : q.is("started_at", null); }
+        else return;
+        await q;
+      }
+    } catch (e) { console.warn("deleteRealEntry: cloud skip:", e); }
+  }
+}
+
+/** Patch one Real entry (reschedule and/or rename). Local mirror + cloud, best-effort. */
+export async function patchRealEntry(target: { id?: string; title?: string; started_at?: string | null }, patch: Partial<StoredEntry>): Promise<void> {
+  lsSet(LS_ENTRIES, lsGet<StoredEntry[]>(LS_ENTRIES, []).map((r) => (sameRow(r, target) ? { ...r, ...patch } : r)));
+  const sb = await ensureSession();
+  if (sb) {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        let q = sb.from("real_entries").update(patch).eq("user_id", user.id);
+        if (isUuid(target.id)) q = q.eq("id", target.id!);
+        else if (target.title != null) { q = q.eq("title", target.title); q = target.started_at ? q.eq("started_at", target.started_at) : q.is("started_at", null); }
+        else return;
+        await q;
+      }
+    } catch (e) { console.warn("patchRealEntry: cloud skip:", e); }
+  }
+}
+
+/** Wipe the Real check-ins logged TODAY (local mirror + cloud) so testing starts clean.
+   Plans are untouched. Slotted entries have no started_at — they count as today by design. */
+export async function clearTodayRealEntries(): Promise<number> {
+  const today = dayKey();
+  const isToday = (r: StoredEntry) => (r.started_at ? dayKey(new Date(r.started_at)) : today) === today;
+
+  const all = lsGet<StoredEntry[]>(LS_ENTRIES, []);
+  const removed = all.filter(isToday).length;
+  lsSet(LS_ENTRIES, all.filter((r) => !isToday(r)));
+
+  const sb = await ensureSession();
+  if (sb) {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user) {
+        const start = isoFromDayMin(today, 0);
+        const end = isoFromDayMin(today, 24 * 60);
+        await sb.from("real_entries").delete().eq("user_id", user.id).gte("started_at", start).lt("started_at", end);
+        await sb.from("real_entries").delete().eq("user_id", user.id).is("started_at", null);
+      }
+    } catch (e) { console.warn("clearTodayRealEntries: cloud delete skipped:", e); }
+  }
+  return removed;
 }
 
 export async function loadRealEntries(): Promise<StoredEntry[]> {

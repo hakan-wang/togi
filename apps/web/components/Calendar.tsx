@@ -1,14 +1,15 @@
 /* ============================================================
    Togi — DayCalendar. Real dates + real clock. Plan / Real toggle.
-   Click a day to view it; the + plans that day with Togi. Now-line tracks the
-   real time and only shows on today. Blocks render: title · project chip · note.
+   Tap an EVENT → an info menu (edit / delete). Drag an event up/down to
+   reschedule. Tap or drag an EMPTY space → the voice "listening" popover.
+   Overlapping events lay out side-by-side in columns (like Google Calendar).
    ============================================================ */
 "use client";
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { DOMAINS, DAY_START, DAY_END, PLAN, RealEntry, REAL_SEED, UPCOMING, fmt } from "../lib/data";
 import { dayKey, dayLabel, weekDays, WeekDay } from "../lib/dates";
-import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus, IcEdit } from "./icons";
+import { IcCheck, IcClose, IcChat, IcExpand, IcMinimize, IcPlus, IcEdit, IcTrash } from "./icons";
 import { useRecorder } from "../lib/useRecorder";
 
 function DaySelector({ selectedDate, onSelectDay, onPlanDay }: any) {
@@ -29,19 +30,52 @@ function DaySelector({ selectedDate, onSelectDay, onPlanDay }: any) {
   );
 }
 
-function BlockEl({ top, height, domain, title, project, note, time, layer, tag, live, onClick, editable, onEdit }: any) {
+/* Pack overlapping items into side-by-side columns (Google-Calendar style).
+   Returns, aligned to the input order, each item's { col, cols } within its overlap cluster. */
+function packColumns(items: { start: number; end: number }[]): { col: number; cols: number }[] {
+  const order = items.map((it, idx) => ({ idx, start: it.start, end: it.end })).sort((a, b) => a.start - b.start || a.end - b.end);
+  const res = items.map(() => ({ col: 0, cols: 1 }));
+  let cluster: { idx: number; start: number; end: number }[] = [];
+  let clusterEnd = -Infinity;
+  const flush = () => {
+    const colEnds: number[] = [];
+    for (const e of cluster) {
+      let c = colEnds.findIndex((end) => end <= e.start);
+      if (c === -1) { c = colEnds.length; colEnds.push(e.end); } else { colEnds[c] = e.end; }
+      res[e.idx].col = c;
+    }
+    for (const e of cluster) res[e.idx].cols = colEnds.length;
+    cluster = []; clusterEnd = -Infinity;
+  };
+  for (const e of order) {
+    if (cluster.length && e.start >= clusterEnd) flush();
+    cluster.push(e); clusterEnd = Math.max(clusterEnd, e.end);
+  }
+  flush();
+  return res;
+}
+
+/* Inline left/width for a block in its column (empty when there's no overlap → CSS defaults apply). */
+function colPos(leftBase: number, rightBase: number, col: number, cols: number): React.CSSProperties {
+  if (cols <= 1) return {};
+  const gap = 3;
+  return {
+    left: `calc(${leftBase}px + ${col} * (100% - ${leftBase + rightBase}px) / ${cols})`,
+    width: `calc((100% - ${leftBase + rightBase}px) / ${cols} - ${gap}px)`,
+    right: "auto",
+  };
+}
+
+function BlockEl({ top, height, domain, title, project, note, time, layer, tag, live, onDown, posStyle, dragging }: any) {
   const C = DOMAINS[domain];
   const tiny = height < 40;
+  const shortBlk = Math.max(height, 22) < 34;   // tighten the grips so both still fit a small block
   return (
-    <div className={"blk blk-" + layer + (tag ? " has-tag" : "") + (live ? " blk-live" : "")}
-      style={{ top, height: Math.max(height, 22), background: C.tint, ["--c" as any]: C.color }} onClick={onClick}>
+    <div className={"blk blk-" + layer + (tag ? " has-tag" : "") + (live ? " blk-live" : "") + (dragging ? " blk-dragging" : "")}
+      style={{ top, height: Math.max(height, 22), background: C.tint, ["--c" as any]: C.color, ...posStyle }} onPointerDown={(e: any) => onDown(e, null)}>
       <span className="blk-rail" />
-      {editable && (
-        <button className="blk-edit" title="Edit in Google Calendar" onClick={onEdit}
-          style={{ position: "absolute", top: 4, right: 4, zIndex: 2, display: "grid", placeItems: "center", width: 22, height: 22, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.7)", color: C.color, cursor: "pointer" }}>
-          <IcEdit size={12} />
-        </button>
-      )}
+      <span className={"blk-handle blk-handle-top" + (shortBlk ? " blk-handle-sm" : "")} title="Drag to change the start" onPointerDown={(e: any) => { e.stopPropagation(); onDown(e, "top"); }} />
+      <span className={"blk-handle blk-handle-bottom" + (shortBlk ? " blk-handle-sm" : "")} title="Drag to change the end" onPointerDown={(e: any) => { e.stopPropagation(); onDown(e, "bottom"); }} />
       <div className="blk-body">
         <div className="blk-row">
           <span className="blk-title">{title}</span>
@@ -129,11 +163,13 @@ function MultiDay({ span, plan }: { span: string; plan: any[] }) {
   );
 }
 
-export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now = 0, selectedDate, onSelectDay, onPlanDay, buildCtx, onVoice, onType, onEditBlock, density }: any) {
+export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now = 0, selectedDate, onSelectDay, onPlanDay, buildCtx, onVoice, onType, onEventEdit, onEventDelete, onEventMove, density }: any) {
   const [expanded, setExpanded] = useState(true);
   const [span, setSpan] = useState("1d");
   const [listen, setListen] = useState<any>(null);  // { x, y, ctx, label, busy }
-  const [drag, setDrag] = useState<any>(null);
+  const [drag, setDrag] = useState<any>(null);       // empty-space drag-select preview
+  const [menu, setMenu] = useState<any>(null);       // tapped-event info menu { kind, block, x, y }
+  const [moving, setMoving] = useState<any>(null);   // event being dragged to a new time { kind, id, newStart, newEnd }
   const trackRef = useRef<HTMLDivElement>(null);
   const rec = useRecorder();
 
@@ -149,6 +185,14 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
   const gaps: { s: number; e: number }[] = [];
   const sorted = [...plan].sort((a: any, b: any) => a.start - b.start);
   for (let i = 0; i < sorted.length - 1; i++) { const g0 = sorted[i].end, g1 = sorted[i + 1].start; if (g1 - g0 >= 60) gaps.push({ s: g0, e: g1 }); }
+
+  // Column layout for overlapping events (per layer).
+  const planLayout = packColumns(plan.map((p: any) => ({ start: p.start, end: p.end })));
+  const realResolved = real.map((r: RealEntry) => {
+    const p = r.slot ? plan.find((x: any) => x.id === r.slot) : null;
+    return { r, p, s: p ? p.start : (r.start ?? 12 * 60), e2: p ? p.end : (r.end ?? 13 * 60) };
+  });
+  const realLayout = packColumns(realResolved.map((x: any) => ({ start: x.s, end: x.e2 })));
 
   const segRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ left: 3, width: 0 });
@@ -185,7 +229,35 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
   const cancelListen = () => { rec.cancel(); setListen(null); };
   const typeListen = () => { const ctx = listen?.ctx; rec.cancel(); setListen(null); if (ctx) onType(ctx); };
 
-  const onBlock = (e: React.MouseEvent, b: any) => { e.stopPropagation(); startListen(e.clientX, e.clientY, { block: b }, b.title); };
+  // Tap an event = open its menu. Drag the body = reschedule (move). Drag the top/bottom
+  // grip = resize the start/end. All snap to 5-minute steps.
+  const MIN_DUR = 10;
+  const onBlockDown = (e: React.PointerEvent, kind: "plan" | "real", block: any, edge: "top" | "bottom" | null) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const startClientY = e.clientY;
+    const origStart = block.start, origEnd = block.end, dur = origEnd - origStart;
+    let moved = false;
+    const compute = (dy: number): { ns: number; ne: number } => {
+      if (edge === "top") { const ns = Math.max(DAY_START, Math.min(origEnd - MIN_DUR, mOf(yOf(origStart) + dy))); return { ns, ne: origEnd }; }
+      if (edge === "bottom") { const ne = Math.min(DAY_END, Math.max(origStart + MIN_DUR, mOf(yOf(origEnd) + dy))); return { ns: origStart, ne }; }
+      const ns = Math.max(DAY_START, Math.min(DAY_END - dur, mOf(yOf(origStart) + dy)));
+      return { ns, ne: ns + dur };
+    };
+    const move = (ev: PointerEvent) => {
+      const dy = ev.clientY - startClientY;
+      if (!moved && Math.abs(dy) > 4) moved = true;
+      if (moved) { const { ns, ne } = compute(dy); setMoving({ kind, id: block.id, newStart: ns, newEnd: ne }); }
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      setMoving(null);
+      if (moved) { const { ns, ne } = compute(ev.clientY - startClientY); if (ns !== origStart || ne !== origEnd) onEventMove(kind, block, ns, ne); }
+      else { const rect = trackRef.current!.getBoundingClientRect(); setMenu({ kind, block, x: e.clientX - rect.left, y: e.clientY - rect.top }); }
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
 
   useEffect(() => {
     if (!listen) return;
@@ -197,7 +269,17 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
     return () => window.removeEventListener("keydown", onKey);
   }, [listen]);
 
+  // Close the event menu when clicking anywhere that isn't the menu or a block.
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => { const t = e.target as HTMLElement; if (!t.closest(".ev-menu") && !t.closest(".blk")) setMenu(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    window.addEventListener("pointerdown", onDown); window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [menu]);
+
   const onTrackDown = (e: React.PointerEvent) => {
+    if (menu) { setMenu(null); return; }          // first tap on empty space just dismisses the menu
     if ((e.target as HTMLElement).closest(".blk") || (e.target as HTMLElement).closest(".listen")) return;
     const r = trackRef.current!.getBoundingClientRect();
     const y0 = e.clientY - r.top;
@@ -242,9 +324,16 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
           <div className="cal-track" ref={trackRef} style={{ height: trackH }} onPointerDown={onTrackDown}>
             {hours.map((m) => <div key={m} className="cal-line" style={{ top: yOf(m) }} />)}
 
-            {view === "plan" && gaps.map((g, i) => (
-              <div key={i} className="cal-gap" style={{ top: yOf(g.s), height: yOf(g.e) - yOf(g.s) }}><span className="cal-gap-label"><IcPlus size={12} /> Untracked · tap to tell Togi</span></div>
-            ))}
+            {view === "plan" && gaps.map((g, i) => {
+              // A gap you can still act on in the future is for PLANNING; a gap in the past is
+              // untracked time to tell Togi about. (You can't track the future.)
+              const plannable = selectedDate > dayKey() || (selectedDate === dayKey() && g.e > now);
+              return (
+                <div key={i} className="cal-gap" style={{ top: yOf(g.s), height: yOf(g.e) - yOf(g.s) }}>
+                  <span className="cal-gap-label"><IcPlus size={12} /> {plannable ? "Unplanned · tap to plan with Togi" : "Untracked · tap to tell Togi"}</span>
+                </div>
+              );
+            })}
 
             {isToday && now >= DAY_START && now <= DAY_END && (<div className="cal-now" style={{ top: yOf(now) }}><span className="cal-now-dot" /><span className="cal-now-label num">now</span></div>)}
 
@@ -256,23 +345,29 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
 
             <div className="cal-stage" data-view={view}>
               <div className="plan-layer">
-                {plan.map((p: any) => (
-                  <BlockEl key={p.id} layer="plan" top={yOf(p.start)} height={yOf(p.end) - yOf(p.start)}
-                    domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(p.start)}–${fmt(p.end)}`}
-                    editable={p.source === "gcal" && !!onEditBlock} onEdit={(e: any) => { e.stopPropagation(); onEditBlock(p); }}
-                    onClick={(e: any) => onBlock(e, p)} />
-                ))}
+                {plan.map((p: any, i: number) => {
+                  const L = planLayout[i];
+                  const m = moving && moving.kind === "plan" && moving.id === p.id ? moving : null;
+                  const ps = m ? m.newStart : p.start, pe = m ? m.newEnd : p.end;
+                  return (
+                    <BlockEl key={p.id} layer="plan" top={yOf(ps)} height={yOf(pe) - yOf(ps)}
+                      domain={p.domain} title={p.title} project={p.project} note={p.note} time={`${fmt(ps)}–${fmt(pe)}`}
+                      posStyle={colPos(8, 10, L.col, L.cols)} dragging={!!m}
+                      onDown={(e: any, edge: any) => onBlockDown(e, "plan", p, edge)} />
+                  );
+                })}
               </div>
               <div className="real-layer">
-                {real.map((r: RealEntry) => {
-                  const p = r.slot ? plan.find((x: any) => x.id === r.slot) : null;
-                  const s = p ? p.start : (r.start ?? 12 * 60);
-                  const e2 = p ? p.end : (r.end ?? 13 * 60);
+                {realResolved.map(({ r, p, s, e2 }: any, i: number) => {
+                  const L = realLayout[i];
                   const tag = r.off ? "unplanned" : r.match ? "match" : "off";
+                  const m = moving && moving.kind === "real" && moving.id === r.id ? moving : null;
+                  const rs = m ? m.newStart : s, re = m ? m.newEnd : e2;
                   return (
-                    <div key={r.id} className={"real-pos" + (p ? " aligned" : "")} style={{ position: "absolute", top: yOf(s), left: 0, right: 0, height: yOf(e2) - yOf(s) }}>
-                      <BlockEl layer="real" top={0} height={yOf(e2) - yOf(s)} domain={r.domain} title={r.title} project={r.project} note={r.note}
-                        time={`${fmt(s)}–${fmt(e2)}`} tag={tag} live={r.live} onClick={(ev: any) => onBlock(ev, { ...r, start: s, end: e2 })} />
+                    <div key={r.id} className={"real-pos" + (p ? " aligned" : "")} style={{ position: "absolute", top: yOf(rs), left: 0, right: 0, height: yOf(re) - yOf(rs) }}>
+                      <BlockEl layer="real" top={0} height={yOf(re) - yOf(rs)} domain={r.domain} title={r.title} project={r.project} note={r.note}
+                        time={`${fmt(rs)}–${fmt(re)}`} tag={tag} live={r.live} posStyle={colPos(22, 8, L.col, L.cols)} dragging={!!m}
+                        onDown={(ev: any, edge: any) => onBlockDown(ev, "real", { ...r, start: s, end: e2 }, edge)} />
                     </div>
                   );
                 })}
@@ -280,6 +375,31 @@ export function DayCalendar({ view, setView, real = REAL_SEED, plan = PLAN, now 
             </div>
 
             {drag && (<div className="cal-select" style={{ top: Math.min(drag.y0, drag.y1), height: Math.abs(drag.y1 - drag.y0) }}><span className="num">{fmt(mOf(Math.min(drag.y0, drag.y1)))}–{fmt(mOf(Math.max(drag.y0, drag.y1)))}</span></div>)}
+
+            {menu && (() => {
+              const b = menu.block; const C = DOMAINS[b.domain as keyof typeof DOMAINS];
+              const W = 212;
+              const left = Math.max(6, Math.min(menu.x, (trackRef.current?.offsetWidth || 400) - W - 6));
+              const top = Math.max(4, menu.y - 8);
+              const where = b.source === "gcal" ? (b.calendar || "Google Calendar") : menu.kind === "real" ? "Real check-in" : "Togi plan";
+              return (
+                <div className="ev-menu" style={{ left, top, width: W }} onPointerDown={(e) => e.stopPropagation()}>
+                  <div className="ev-menu-head">
+                    <span className="ev-menu-dot" style={{ background: C.color }} />
+                    <span className="ev-menu-title">{b.title}</span>
+                    <button className="ev-menu-x" title="Close" onClick={() => setMenu(null)}><IcClose size={13} /></button>
+                  </div>
+                  <div className="ev-menu-time num">{fmt(b.start)}–{fmt(b.end)}</div>
+                  {b.project && <div className="ev-menu-sub">{b.project}</div>}
+                  {b.note && <div className="ev-menu-sub">{b.note}</div>}
+                  <div className="ev-menu-cal"><span className="cat-swatch" style={{ background: C.color }} /> {where}</div>
+                  <div className="ev-menu-actions">
+                    <button onClick={() => { onEventEdit(menu.kind, b); setMenu(null); }}><IcEdit size={13} /> Edit</button>
+                    <button className="danger" onClick={() => { onEventDelete(menu.kind, b); setMenu(null); }}><IcTrash size={13} /> Delete</button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {listen && (
               <div className="listen" style={{ left: Math.min(listen.x, (trackRef.current?.offsetWidth || 400) - 168), top: Math.max(listen.y - 58, 0) }}>

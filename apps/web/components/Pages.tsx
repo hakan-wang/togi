@@ -11,6 +11,10 @@ import { IcArrow, IcCheck, IcClose, IcMic, IcSpark, IcPlus } from "./icons";
 import { computeStats, seedHistory } from "../lib/behavior";
 import { applyToPlanning, dismiss, InsightRecord, loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
 import { loadFacts, setFact } from "../lib/userFacts";
+import { clearTodayRealEntries } from "../lib/store";
+
+/** 15 → "15m", 60 → "1h", 90 → "1h30", 120 → "2h" */
+const humanDur = (m: number) => (m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`);
 
 const FAMILY_COLOR: Record<string, string> = {
   drift: "var(--cat-creative)", estimation: "var(--cat-errands)", distraction: "var(--cat-scroll)",
@@ -165,8 +169,13 @@ export function SettingsPage({ onConnectCalendar, onDisconnectCalendar, onAddEve
         {facts.autoCheckin && (<>
           <div className="hairline" />
           <div className="set-row">
-            <div><div className="set-title">Smallest gap to track</div><div className="set-sub">Ignore gaps shorter than this. Longer gaps get one check-in per hour.</div></div>
+            <div><div className="set-title">Smallest blank to track</div><div className="set-sub">Ignore blank stretches shorter than this — Togi won’t ask about a {(facts.minGapMin - 5)}-min gap, but will about a {facts.minGapMin}-min one.</div></div>
             <div className="seg-mini">{[15, 30, 45, 60].map((m) => <button key={m} className={facts.minGapMin === m ? "on" : ""} onClick={() => updateFact("minGapMin", m)}>{m}m</button>)}</div>
+          </div>
+          <div className="hairline" />
+          <div className="set-row">
+            <div><div className="set-title">How often to check in</div><div className="set-sub">Inside a longer blank stretch, Togi asks once per this much time (a {humanDur(facts.autoEveryMin)} window). A leftover smaller than the minimum folds into the one before it.</div></div>
+            <div className="seg-mini">{[15, 30, 45, 60, 90, 120].map((m) => <button key={m} className={facts.autoEveryMin === m ? "on" : ""} onClick={() => updateFact("autoEveryMin", m)}>{humanDur(m)}</button>)}</div>
           </div>
         </>)}
       </div>
@@ -183,6 +192,16 @@ export function SettingsPage({ onConnectCalendar, onDisconnectCalendar, onAddEve
         <Row k="wake" title="Tap-to-talk (axolotl / ⌘K)" sub="The mic only opens on a tap — never listens on its own." />
         <div className="hairline" />
         <Row k="reduce" title="Reduce motion" sub="Calmer transitions on the calendar flip." />
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Reset</span><span className="card-sub">for testing</span></div>
+        <div className="set-row">
+          <div><div className="set-title">Clear today’s check-ins</div><div className="set-sub">Removes the Real check-ins logged today (this browser + the cloud) so you can test fresh. Your plans stay exactly as they are.</div></div>
+          <button className="btn-ghost" style={{ color: "var(--danger, #d8443c)", flex: "0 0 auto" }}
+            onClick={async () => { if (!window.confirm("Clear today’s Real check-ins? Your plans stay as they are.")) return; const n = await clearTodayRealEntries(); window.alert(`Cleared ${n} check-in${n === 1 ? "" : "s"}. Reloading…`); window.location.reload(); }}>
+            Clear
+          </button>
+        </div>
       </div>
       <div className="card set-account">
         <div className="avatar" style={{ width: 38, height: 38 }}>H</div>

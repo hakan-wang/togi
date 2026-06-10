@@ -82,7 +82,51 @@
 /* ---- the focus-pull stage ---- */
 .cal-stage { position: absolute; inset: 0; z-index: 3; }
 .plan-layer, .real-layer { position: absolute; inset: 0; }
-.real-pos.aligned { transform: translateX(12px); }
+/* Every Real entry sits in a column slightly to the right of the Plan column, so the two
+   timelines read side by side (and an aligned check-in never fully hides its plan block). */
+.real-layer .blk { left: 22px; right: 8px; }
+
+/* blocks are draggable to reschedule */
+.blk { touch-action: none; }
+.blk-dragging { z-index: 9 !important; box-shadow: 0 8px 22px rgba(29,26,22,0.22); cursor: grabbing; opacity: .96; }
+
+/* top/bottom grips — drag to change the start / end time (5-min steps) */
+.blk-handle { position: absolute; left: 0; right: 0; height: 9px; cursor: ns-resize; z-index: 3; touch-action: none; }
+.blk-handle-top { top: -2px; }
+.blk-handle-bottom { bottom: -2px; }
+.blk-handle::after {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 26px; height: 3px; border-radius: 3px; background: var(--c); opacity: 0; transition: opacity .12s ease;
+}
+.blk:hover .blk-handle::after { opacity: .5; }
+.blk-handle:hover::after { opacity: .95; height: 4px; }
+/* small blocks: thinner grips that still fit, shown faintly so they're discoverable */
+.blk-handle-sm { height: 7px; }
+.blk-handle-sm::after { width: 20px; opacity: .34; }
+.blk:hover .blk-handle-sm::after { opacity: .6; }
+.blk-handle-sm:hover::after { opacity: .95; }
+
+/* tap-an-event info menu (edit / delete / close) */
+.ev-menu {
+  position: absolute; z-index: 14; background: var(--togi-surface, #fff);
+  border: 1px solid var(--togi-line-2, #e6e4e0); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(29,26,22,0.20); padding: 11px 12px;
+  display: flex; flex-direction: column; gap: 5px; animation: ev-pop .14s var(--ease-bogi, ease);
+}
+@keyframes ev-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.ev-menu-head { display: flex; align-items: center; gap: 7px; }
+.ev-menu-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.ev-menu-title { font-size: 13px; font-weight: 700; color: var(--togi-ink); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-menu-x { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; border: none; background: transparent; color: var(--togi-muted); border-radius: 6px; cursor: pointer; }
+.ev-menu-x:hover { background: var(--togi-line, #f0eee9); color: var(--togi-ink); }
+.ev-menu-time { font-size: 12px; color: var(--togi-ink-2); font-weight: 600; }
+.ev-menu-sub { font-size: 12px; color: var(--togi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-menu-cal { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--togi-muted); margin-top: 1px; }
+.ev-menu-actions { display: flex; gap: 7px; margin-top: 8px; }
+.ev-menu-actions button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 8px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid var(--togi-line-2, #e6e4e0); background: var(--togi-surface, #fff); color: var(--togi-ink); cursor: pointer; }
+.ev-menu-actions button:hover { background: var(--togi-line, #f3f1ec); }
+.ev-menu-actions button.danger { color: var(--danger, #d8443c); border-color: color-mix(in srgb, var(--danger, #d8443c) 30%, transparent); }
+.ev-menu-actions button.danger:hover { background: color-mix(in srgb, var(--danger, #d8443c) 10%, transparent); }
 
 .blk {
   position: absolute; left: 8px; right: 10px;

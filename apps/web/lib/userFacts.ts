@@ -5,20 +5,30 @@
    ============================================================ */
 import { seedHistory } from "./behavior";
 
-export interface UserFacts { wakeMin: number; sleepMin: number; planningMin: number; autoCheckin: boolean; minGapMin: number; }
+export interface UserFacts { wakeMin: number; sleepMin: number; planningMin: number; autoCheckin: boolean; minGapMin: number; autoEveryMin: number; }
 const LS = "togi.facts.v1";
-const DEFAULTS: UserFacts = { wakeMin: 7 * 60, sleepMin: 23 * 60, planningMin: 21 * 60, autoCheckin: false, minGapMin: 30 };
+const DEFAULTS: UserFacts = { wakeMin: 7 * 60, sleepMin: 23 * 60, planningMin: 21 * 60, autoCheckin: false, minGapMin: 30, autoEveryMin: 60 };
 
-/** Split a blank gap into hourly check-in windows: one per hour, plus a trailing
-   remainder ≥ minGapMin counts as one more (2h35m → 3, 2h15m → 2). */
-export function gapWindows(start: number, end: number, minGapMin: number): Array<{ start: number; end: number }> {
+/** Split a blank gap into check-in windows of `everyMin` each. A blank shorter than
+   minGapMin gets none. A trailing remainder ≥ minGapMin becomes its own window; a
+   smaller leftover is folded into the previous window so no time goes untracked.
+   e.g. (every 60, min 30): 1h00 → 1 · 1h45 → [1h, 45m] · 1h20 → [1h20] · 25m → none. */
+export function gapWindows(start: number, end: number, minGapMin: number, everyMin = 60): Array<{ start: number; end: number }> {
   const len = end - start;
   if (len < minGapMin) return [];
-  const full = Math.floor(len / 60);
-  const remainder = len - full * 60;
-  const count = full + (remainder >= minGapMin ? 1 : 0) || (len >= minGapMin ? 1 : 0);
+  const step = Math.max(15, everyMin);
   const out: Array<{ start: number; end: number }> = [];
-  for (let i = 0; i < count; i++) { const s = start + i * 60; out.push({ start: s, end: Math.min(end, s + 60) }); }
+  let s = start;
+  while (s < end) {
+    const remaining = end - s;
+    if (remaining <= step) {
+      if (remaining >= minGapMin || out.length === 0) out.push({ start: s, end });
+      else out[out.length - 1].end = end; // fold a small leftover into the previous window
+      break;
+    }
+    out.push({ start: s, end: s + step });
+    s += step;
+  }
   return out;
 }
 

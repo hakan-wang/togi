@@ -15,7 +15,7 @@ import { parseTimeRange, parseDuration, guessPlanMeta, cleanTitle } from "../lib
 import { advisePlan } from "../lib/planAdvisor";
 import { loadMemory, refreshInsights, surfaced } from "../lib/insightMemory";
 import { computeStats, seedHistory } from "../lib/behavior";
-import { addActivity, addProject, loadPlanLocal, loadRealEntries, loadVocabulary, savePlanLocal, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
+import { addActivity, addProject, deleteRealEntry, loadPlanLocal, loadRealEntries, loadVocabulary, patchRealEntry, savePlanLocal, saveRealEntry, toRealEntry, Vocabulary } from "../lib/store";
 import { IcChevron, IcInsights, IcMic, IcSettings, IcToday } from "./icons";
 import { TodayCheckin, InsightBanner, CapContext, CheckinInput, CheckinResult } from "./Today";
 import { DayCalendar } from "./Calendar";
@@ -24,6 +24,7 @@ import { SessionsView } from "./Sessions";
 import { SessionOverlay } from "./SessionOverlay";
 import { InsightsPage, SettingsPage } from "./Pages";
 import { GcalEventEditor, EventDraft } from "./GcalEventEditor";
+import { EventEditor, EditableEvent, EventChanges } from "./EventEditor";
 import * as gcal from "../lib/gcal";
 
 const NAV_B = [
@@ -121,6 +122,7 @@ export function TogiAppB() {
   const [calEmail, setCalEmail] = useState<string | null>(null);
   const [calStatus, setCalStatus] = useState<string | null>(null);
   const [gcalEditor, setGcalEditor] = useState<{ block: PlanBlock | null } | null>(null);
+  const [eventEditor, setEventEditor] = useState<EditableEvent | null>(null);
   const [insight, setInsight] = useState<BannerInsight>(() => computeInsight([]));
   const [vocab, setVocab] = useState<Vocabulary>({ projects: [], activities: STARTER_ACTIVITIES });
   const ackTimer = useRef<any>(null);
@@ -245,23 +247,13 @@ export function TogiAppB() {
     const r = await categorizeText(utterance, { block: ctx.title, planId: ctx.planId, window: ctx.window, kind: ctx.kind }, vocab);
     if (!isAnswer && r.confidence < 0.6 && r.clarify_question) return { status: "clarify", question: r.clarify_question, draftText: utterance };
 
-    // A check-in glues to the plan block it belongs to: either the block it came from,
-    // or whichever planned block its time falls within. Only true gaps stay off-plan.
-    let slot = ctx.planId || null;
-    if (!slot) {
-      const onSel = (p: PlanBlock) => (p.date || dayKey()) === selectedDate;
-      if (ctx.start != null) {
-        // a specific tapped time → the block that time falls within (else a true gap)
-        slot = plan.find((p) => onSel(p) && ctx.start! >= p.start && ctx.start! < p.end)?.id || null;
-      } else {
-        // a generic "now" check-in → the block Togi is WAITING on (just ended, not logged),
-        // else the block currently in progress.
-        const liveSlots = new Set(real.filter((r) => r.live && r.slot).map((r) => r.slot));
-        const due = plan.filter((p) => onSel(p) && p.end <= nowMin && !liveSlots.has(p.id)).sort((a, b) => b.end - a.end)[0];
-        const t = nowMinutes();
-        slot = due?.id || plan.find((p) => onSel(p) && t >= p.start && t < p.end)?.id || null;
-      }
-    }
+    // Where a check-in lands on the Real timeline:
+    //  • If it came from a specific block — the "X just ended" notification, or tapping a
+    //    planned block — it SNAPS onto that block's row, so Plan and Real line up.
+    //  • Otherwise it lands at its REAL time: the dragged range, the tapped point, the
+    //    auto check-in hour, or (for a plain "now" check-in) the stretch leading up to now.
+    //    These stay off-plan — we never force a real-time check-in onto a planned block.
+    const slot = ctx.planId || null;
     const entry = placeLive({
       id: `live-${Date.now()}`, slot: slot || undefined, off: !slot, match: r.matched,
       domain: r.domain, project: r.project, activity: r.activity, title: r.title, note: r.note, confidence: r.confidence, live: true,
@@ -275,7 +267,8 @@ export function TogiAppB() {
     if (r.project && !vocab.projects.some((p) => p.toLowerCase() === r.project!.toLowerCase())) { addProject(r.project); setVocab((v) => ({ ...v, projects: [...v.projects, r.project!] })); }
 
     const durMin = entry.start != null && entry.end != null ? entry.end - entry.start : r.durationMin ?? null;
-    await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: durMin, matched_plan_id: slot, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: entry.start != null ? isoFromDayMin(selectedDate, entry.start) : null });
+    const saved = await saveRealEntry({ title: r.title, domain: r.domain, project: r.project, activity: r.activity, note: r.note, duration_min: durMin, matched_plan_id: slot, matched: r.matched, confidence: r.confidence, transcript: utterance, started_at: entry.start != null ? isoFromDayMin(selectedDate, entry.start) : null });
+    if (saved.id) setReal((cur) => cur.map((x) => (x.id === entry.id ? { ...x, id: saved.id } : x))); // adopt the DB id so later edit/delete match
     logged(`Logged: ${DOMAINS[r.domain].label}${r.project ? " › " + r.project : ""} › ${r.activity}`);
     return { status: "done" };
   }
@@ -309,6 +302,57 @@ export function TogiAppB() {
     savePlanLocal(nextPlan.filter((b) => b.id.startsWith("plan-")));
     logged(`Planned: ${block.title} · ${fmt(block.start)}–${fmt(block.end)}${reasonAll ? " — " + reasonAll : ""}`);
     return { status: "done" };
+  }
+
+  // ---- Tap-an-event menu: edit / delete / drag-to-reschedule (plan or real) ----
+  function onEventEdit(kind: "plan" | "real", block: any) {
+    if (kind === "plan" && block.source === "gcal") { setGcalEditor({ block }); return; } // Google events use the write-back editor
+    setEventEditor({ kind, id: block.id, title: block.title, start: block.start, end: block.end, note: block.note ?? null, project: block.project ?? null, domain: block.domain });
+  }
+
+  async function onEventDelete(kind: "plan" | "real", block: any) {
+    if (kind === "plan") {
+      if (block.source === "gcal" && block.gcalId) { try { await deleteGcalEvent(block.gcalId); } catch { /* status surfaces the error */ } return; }
+      setPlan((cur) => { const next = cur.filter((b) => b.id !== block.id); savePlanLocal(next.filter((b) => b.id.startsWith("plan-"))); return next; });
+      logged("Removed from your plan.");
+      return;
+    }
+    setReal((cur) => cur.filter((r) => r.id !== block.id));
+    const startedAt = block.slot ? null : isoFromDayMin(block.date || selectedDate, block.start);
+    deleteRealEntry({ id: block.id, title: block.title, started_at: startedAt });
+    logged("Check-in deleted.");
+  }
+
+  function onEventMove(kind: "plan" | "real", block: any, ns: number, ne: number) {
+    if (kind === "plan") {
+      if (block.source === "gcal" && block.gcalId) {
+        setPlan((cur) => cur.map((b) => (b.id === block.id ? { ...b, start: ns, end: ne } : b))); // optimistic
+        const draft: EventDraft = { title: block.title, startISO: isoFromDayMin(selectedDate, ns), endISO: isoFromDayMin(selectedDate, ne), note: block.note || undefined };
+        gcal.updateEvent(block.gcalId, draft).then(() => refreshCalendar(false)).catch(() => refreshCalendar(false));
+        return;
+      }
+      setPlan((cur) => { const next = cur.map((b) => (b.id === block.id ? { ...b, start: ns, end: ne } : b)); savePlanLocal(next.filter((b) => b.id.startsWith("plan-"))); return next; });
+      logged(`Moved to ${fmt(ns)}.`);
+      return;
+    }
+    const oldStarted = block.slot ? null : isoFromDayMin(block.date || selectedDate, block.start);
+    setReal((cur) => cur.map((r) => (r.id === block.id ? { ...r, slot: undefined, off: true, start: ns, end: ne } : r)));
+    patchRealEntry({ id: block.id, title: block.title, started_at: oldStarted }, { started_at: isoFromDayMin(block.date || selectedDate, ns), duration_min: ne - ns, matched_plan_id: null });
+    logged(`Moved to ${fmt(ns)}.`);
+  }
+
+  async function saveEventEdit(changes: EventChanges) {
+    const ev = eventEditor!;
+    if (ev.kind === "plan") {
+      setPlan((cur) => { const next = cur.map((b) => (b.id === ev.id ? { ...b, title: changes.title, start: changes.start, end: changes.end, note: changes.note || undefined } : b)); savePlanLocal(next.filter((b) => b.id.startsWith("plan-"))); return next; });
+      logged(`Updated: ${changes.title}`);
+      return;
+    }
+    const cur = real.find((r) => r.id === ev.id);
+    const oldStarted = cur && !cur.slot ? isoFromDayMin(cur.date || selectedDate, cur.start ?? changes.start) : null;
+    setReal((list) => list.map((r) => (r.id === ev.id ? { ...r, title: changes.title, note: changes.note, slot: undefined, off: true, start: changes.start, end: changes.end } : r)));
+    await patchRealEntry({ id: ev.id, title: ev.title, started_at: oldStarted }, { title: changes.title, note: changes.note, started_at: isoFromDayMin(selectedDate, changes.start), duration_min: changes.end - changes.start, matched_plan_id: null });
+    logged(`Updated: ${changes.title}`);
   }
 
   // ---- Google Calendar: connect / refresh / disconnect (server-side OAuth) ----
@@ -406,11 +450,11 @@ export function TogiAppB() {
                 onSelectDay={(key: string) => setSelectedDate(key)}
                 onPlanDay={(key: string) => { setSelectedDate(key); setCapture({ context: planCtx(), plan: true }); }}
                 buildCtx={buildCtx} onVoice={onVoice} onType={onTypeFallback}
-                onEditBlock={calConnected ? (b: PlanBlock) => setGcalEditor({ block: b }) : undefined} />
+                onEventEdit={onEventEdit} onEventDelete={onEventDelete} onEventMove={onEventMove} />
             </div>
           </div>
         )}
-        {tab === "sessions" && (<div className="content-scroll"><SessionsView onSession={startSession} onTalk={() => openSession("ask")} plan={plan} real={real} today={today} nowMin={nowMin} planningMin={loadFacts().planningMin} autoCheckin={loadFacts().autoCheckin} minGapMin={loadFacts().minGapMin} onGapCheckin={(w: any) => setCapture({ context: { ...selfCtx(`${fmt(w.start)}–${fmt(w.end)}`), start: w.start, end: w.end } })} /></div>)}
+        {tab === "sessions" && (<div className="content-scroll"><SessionsView onSession={startSession} onTalk={() => openSession("ask")} plan={plan} real={real} today={today} nowMin={nowMin} planningMin={loadFacts().planningMin} autoCheckin={loadFacts().autoCheckin} minGapMin={loadFacts().minGapMin} autoEveryMin={loadFacts().autoEveryMin} onGapCheckin={(w: any) => setCapture({ context: { ...selfCtx(`${fmt(w.start)}–${fmt(w.end)}`), start: w.start, end: w.end } })} /></div>)}
         {tab === "insights" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">What Togi sees</div><h1>Insights</h1></div></header><InsightsPage onOpenSession={openSession} /></div></div>)}
         {tab === "settings" && (<div className="content-scroll"><div className="surface-inner"><header className="page-head"><div><div className="eyebrow">Preferences</div><h1>Settings</h1></div></header><SettingsPage onConnectCalendar={connectCalendar} onDisconnectCalendar={disconnectCalendar} onAddEvent={() => setGcalEditor({ block: null })} calStatus={calStatus} calConnected={calConnected} calConfigured={calConfigured} calEmail={calEmail} /></div></div>)}
       </main>
@@ -418,6 +462,7 @@ export function TogiAppB() {
       {capture && <TodayCheckin context={capture.context} onSubmit={(input) => capture.plan ? handlePlan(capture.context, input) : handleCapture(capture.context, input)} onClose={() => setCapture(null)} />}
       {session && <SessionOverlay mode={session.mode} ctx={session.ctx} onClose={() => setSession(null)} onAction={onAction} />}
       {gcalEditor && <GcalEventEditor block={gcalEditor.block} onSave={saveGcalEvent} onDelete={deleteGcalEvent} onClose={() => setGcalEditor(null)} />}
+      {eventEditor && <EventEditor event={eventEditor} onSave={saveEventEdit} onDelete={() => onEventDelete(eventEditor.kind, eventEditor)} onClose={() => setEventEditor(null)} />}
     </div>
   );
 }
