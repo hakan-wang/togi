@@ -7,3 +7,5 @@ backend/function.zip
 backend/env.json
 backend/package-lock.json
 apps/macos/Bogi/build/
+archive/macos-screen-tracking/Bogi/.build/
+archive/macos-screen-tracking/Bogi/build/

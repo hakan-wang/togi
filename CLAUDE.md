@@ -12,12 +12,20 @@ already exist.
 **`docs/togi_product_and_ui_brief.md`** — read it first. It defines what Togi is, the core
 value, the features, and the UI. If anything elsewhere contradicts the brief, the **brief wins**.
 
-## 1. What Togi is (from the brief)
-A private, **voice-first** assistant that helps you **plan your day**, then **record what you
-actually did**. The product lives in the gap between intention and reality. The headline is
-**clarity + a private behavioral data bank about how you spend your time** — *not* "accountability"
-(accountability is just the mechanism that collects your honest input). Short-term: where did today
-go? Long-term: a compounding record of your life, for you.
+## 1. What Togi is — THE CORE (read carefully)
+Togi is a private **time-clarity + planning** product. The core, in Håkan's own words:
+1. **See the gap** — what you *said* you'd do vs. what you *actually* did.
+2. **Surface insight about the gap** — e.g. "you underestimate travel/errands by ~60 min/day."
+3. **Plan tomorrow smarter** — plan *with* your real habits (not against them), in a way you'll
+   actually follow through on.
+4. **Long-term clarity** — where your time really goes, weekly / monthly / yearly.
+
+> ⚠️ **Voice is NOT a core feature.** It is *only* an input convenience (it's easier to talk than
+> type when you check in). **Togi does not talk back / is not a chatty voice assistant.** Do NOT
+> frame Togi as "voice-first" anywhere. This explicitly **overrides** the brief, which over-uses
+> "voice-first" — Håkan corrected this on 2026-06-10. The product is **data, clarity, and planning**.
+>
+> "Accountability" is also not the headline — it's just the mechanism that collects your honest input.
 
 ## 2. Brand & UI direction (IMPORTANT — this changed)
 - **Clean, neutral, calm — think Apple.** Lots of whitespace, crisp type, one restrained accent.
@@ -51,10 +59,7 @@ go? Long-term: a compounding record of your life, for you.
   explicit tap (or ⌘K). Then: live waveform, pause/resume, Esc cancels, "type instead", Enter submits.
 - **Insights must pass the "Miss Test"** — only surface patterns the user wouldn't notice. See
   `docs/togi_insights_spec.md`.
-- **Categorization:** the *code today* uses 4 independent fields (`domain` / `project` / `activity`
-  / `note`, see `docs/togi_categorization_spec.md`). The *brief* (§6.5) describes 3 levels
-  (Category / Sub-category / Description). **These don't fully match — ask Håkan which model to
-  follow before changing categorization.**
+- **Categorization:** 4 independent fields — `domain` (fixed 7-value enum) / `project` (user-declared only, nullable) / `activity` (reusable verb phrase) / `note` (optional one-liner). See `docs/togi_categorization_spec.md`. The brief §6.5 matches the code.
 
 ## 5. Run it
 ```bash
