@@ -9,3 +9,14 @@ backend/package-lock.json
 apps/macos/Bogi/build/
 archive/macos-screen-tracking/Bogi/.build/
 archive/macos-screen-tracking/Bogi/build/
+
+# Local credentials and environment files
+.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.local.example
+*.key
+*.pem
+*.p12
+*.mobileprovision
